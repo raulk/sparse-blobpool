@@ -135,7 +135,9 @@ class TestNetwork:
         network1.register_node(ActorId("sender"), Region.NA)
         network1.register_node(ActorId("receiver"), Region.NA)
 
-        sender1.send(SampleMessage(sender=ActorId("sender"), content="test"), to=ActorId("receiver"))
+        sender1.send(
+            SampleMessage(sender=ActorId("sender"), content="test"), to=ActorId("receiver")
+        )
         sim1.run_until_empty()
         same_region_time = receiver1.received[0][0]
 
@@ -152,7 +154,9 @@ class TestNetwork:
         network2.register_node(ActorId("sender"), Region.NA)
         network2.register_node(ActorId("receiver"), Region.AS)  # Different region
 
-        sender2.send(SampleMessage(sender=ActorId("sender"), content="test"), to=ActorId("receiver"))
+        sender2.send(
+            SampleMessage(sender=ActorId("sender"), content="test"), to=ActorId("receiver")
+        )
         sim2.run_until_empty()
         cross_region_time = receiver2.received[0][0]
 
@@ -216,10 +220,12 @@ class TestNetwork:
         network.register_node(ActorId("receiver"), Region.NA)
 
         sender.send(
-            SampleMessage(sender=ActorId("sender"), content="msg1", _size=100), to=ActorId("receiver")
+            SampleMessage(sender=ActorId("sender"), content="msg1", _size=100),
+            to=ActorId("receiver"),
         )
         sender.send(
-            SampleMessage(sender=ActorId("sender"), content="msg2", _size=200), to=ActorId("receiver")
+            SampleMessage(sender=ActorId("sender"), content="msg2", _size=200),
+            to=ActorId("receiver"),
         )
 
         sim.run_until_empty()
