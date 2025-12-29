@@ -199,6 +199,33 @@ Before proposing changes, run the test suite and ensure it passes.
 
 10. **Long functions** — Functions exceeding ~50 lines should be split.
 
+## Git commits
+
+Use [Conventional Commits](https://www.conventionalcommits.org/). Format:
+
+```
+<type>: <description>
+
+[optional body]
+```
+
+Types:
+
+- `feat:` — new feature
+- `fix:` — bug fix
+- `docs:` — documentation only
+- `style:` — formatting, no code change
+- `refactor:` — code change that neither fixes a bug nor adds a feature
+- `test:` — adding or updating tests
+- `chore:` — maintenance, dependencies, CI
+
+Rules:
+
+- Use lowercase for type and description
+- No period at the end of the description
+- Keep the first line under 72 characters
+- Use imperative mood ("add feature" not "added feature")
+
 ## Change scope
 
 Adapt to the task:
