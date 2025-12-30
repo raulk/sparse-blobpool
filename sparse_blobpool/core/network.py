@@ -53,9 +53,9 @@ class Network(Actor):
     def __init__(
         self,
         simulator: Simulator,
+        metrics: MetricsCollector,
         latency_matrix: dict[tuple[Region, Region], LatencyParams] | None = None,
         default_bandwidth: float = 100 * 1024 * 1024,  # 100 MB/s
-        metrics: MetricsCollector | None = None,
     ) -> None:
         super().__init__(NETWORK_ACTOR_ID, simulator)
         self._latency_matrix = latency_matrix or LATENCY_DEFAULTS
@@ -106,10 +106,9 @@ class Network(Actor):
         self._messages_delivered += 1
         self._total_bytes += msg.size_bytes
 
-        # Record to metrics collector if available
-        if self._metrics is not None:
-            is_control = self._is_control_message(msg)
-            self._metrics.record_bandwidth(from_, to, msg.size_bytes, is_control)
+        # Record to metrics collector
+        is_control = self._is_control_message(msg)
+        self._metrics.record_bandwidth(from_, to, msg.size_bytes, is_control)
 
     def _is_control_message(self, msg: Message) -> bool:
         """Determine if a message is control (announcements) vs data (cells)."""

@@ -84,7 +84,7 @@ class Node(Actor):
         simulator: Simulator,
         config: SimulationConfig,
         custody_columns: int,
-        metrics: MetricsCollector | None = None,
+        metrics: MetricsCollector,
     ) -> None:
         super().__init__(actor_id, simulator)
         self._config = config
@@ -168,8 +168,7 @@ class Node(Actor):
             self._pool.add(entry)
 
             # Record metrics - origin node is always a provider with full blob
-            if self._metrics is not None:
-                self._metrics.record_tx_seen(self._id, msg.tx_hash, Role.PROVIDER, msg.cell_mask)
+            self._metrics.record_tx_seen(self._id, msg.tx_hash, Role.PROVIDER, msg.cell_mask)
 
             self._announce_tx(entry)
         except (RBFRejected, SenderLimitExceeded, PoolFull):
@@ -522,8 +521,7 @@ class Node(Actor):
             self._pool.add(entry)
 
             # Record metrics
-            if self._metrics is not None:
-                self._metrics.record_tx_seen(self._id, tx_hash, pending.role, cell_mask)
+            self._metrics.record_tx_seen(self._id, tx_hash, pending.role, cell_mask)
 
             # Announce to peers
             self._announce_tx(entry)
@@ -639,8 +637,7 @@ class Node(Actor):
             # Schedule cleanup for txs in our pool
             if self._pool.contains(tx_hash):
                 # Record inclusion metrics
-                if self._metrics is not None:
-                    self._metrics.record_inclusion(tx_hash, msg.block.slot)
+                self._metrics.record_inclusion(tx_hash, msg.block.slot)
 
                 self._schedule_tx_cleanup(tx_hash)
 
