@@ -50,8 +50,7 @@ class Simulator:
         self._actors: dict[ActorId, Actor] = {}
         self._rng = Random(seed)
         self._events_processed: int = 0
-        # Scenario-level state (set by build_simulator)
-        self._nodes: list[Node] | None = None
+
         self._network: Network | None = None
         self._block_producer: BlockProducer | None = None
         self._topology: TopologyResult | None = None
@@ -78,9 +77,10 @@ class Simulator:
 
     @property
     def nodes(self) -> list[Node]:
-        if self._nodes is None:
-            raise RuntimeError("Simulator not configured with nodes")
-        return self._nodes
+        """Return all Node actors registered with this simulator."""
+        from ..actors.honest import Node
+
+        return [actor for actor in self._actors.values() if isinstance(actor, Node)]
 
     @property
     def network(self) -> Network:

@@ -25,10 +25,27 @@ class NodeInfo:
 
 @dataclass
 class TopologyResult:
-    """Result of topology generation."""
+    """Result of topology generation.
 
-    nodes: list[NodeInfo]
+    Contains region assignments and peer connections for the network.
+    """
+
+    regions: dict[ActorId, Region]
     edges: list[tuple[ActorId, ActorId]]
+
+    @property
+    def nodes(self) -> list[NodeInfo]:
+        """Backward compatibility: return NodeInfo list from regions dict."""
+        return [NodeInfo(actor_id=aid, region=r) for aid, r in self.regions.items()]
+
+    @property
+    def node_ids(self) -> list[ActorId]:
+        """Return all node IDs in this topology."""
+        return list(self.regions.keys())
+
+    def region_for(self, actor_id: ActorId) -> Region | None:
+        """Get the region for a node, or None if unknown."""
+        return self.regions.get(actor_id)
 
     def peers_of(self, node_id: ActorId) -> list[ActorId]:
         peers = []
@@ -44,16 +61,19 @@ def build_topology(config: SimulationConfig, rng: Random) -> TopologyResult:
     from ..config import TopologyStrategy
 
     # Generate node IDs and assign regions
-    nodes = _generate_nodes(config, rng)
+    node_infos = _generate_nodes(config, rng)
 
     # Generate edges based on strategy
     match config.topology:
         case TopologyStrategy.RANDOM_GRAPH:
-            edges = _build_random_graph(nodes, config.mesh_degree, rng)
+            edges = _build_random_graph(node_infos, config.mesh_degree, rng)
         case TopologyStrategy.GEOGRAPHIC_KADEMLIA:
-            edges = _build_geographic_kademlia(nodes, config.mesh_degree, rng)
+            edges = _build_geographic_kademlia(node_infos, config.mesh_degree, rng)
 
-    return TopologyResult(nodes=nodes, edges=edges)
+    # Convert NodeInfo list to regions dict
+    regions = {node.actor_id: node.region for node in node_infos}
+
+    return TopologyResult(regions=regions, edges=edges)
 
 
 def _generate_nodes(config: SimulationConfig, rng: Random) -> list[NodeInfo]:

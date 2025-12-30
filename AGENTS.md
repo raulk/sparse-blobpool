@@ -211,6 +211,34 @@ Before proposing changes, run the test suite and ensure it passes.
 
 10. **Long functions** — Functions exceeding ~50 lines should be split.
 
+11. **Explanatory comments** — Comments that describe what code does. Code should be self-explanatory.
+
+    ```python
+    # ✗
+    # Create block producer
+    block_producer = BlockProducer(simulator)
+
+    # Note: simulator.nodes is now derived from _actors
+    simulator._network = network
+
+    # ✓
+    block_producer = BlockProducer(simulator)
+    simulator._network = network
+    ```
+
+12. **Redundant docstrings** — Docstrings that repeat what the function name + signature already say.
+
+    ```python
+    # ✗
+    def _select_proposer(self, nodes: list) -> Node:
+        """Select proposer using round-robin based on slot number."""
+        return nodes[self._current_slot % len(nodes)]
+
+    # ✓
+    def _select_proposer(self, nodes: list) -> Node:
+        return nodes[self._current_slot % len(nodes)]
+    ```
+
 ## Git commits
 
 Use [Conventional Commits](https://www.conventionalcommits.org/). Format:

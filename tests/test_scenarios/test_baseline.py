@@ -137,17 +137,23 @@ class TestBlockProduction:
         result = build_simulator(config)
 
         # Broadcast some transactions
+        tx_hashes = []
         for _ in range(5):
-            broadcast_transaction(result, result.nodes[0])
+            tx_hash = broadcast_transaction(result, result.nodes[0])
+            tx_hashes.append(tx_hash)
 
         # Start block production
         result.block_producer.start()
 
-        # Run for 2 slots (24 seconds)
-        result.run(26.0)
+        # Run for 2 slots (24 seconds) plus cleanup time
+        result.run(30.0)
 
-        # Should have produced at least 1 block
-        assert result.block_producer.blocks_produced >= 1
+        # Should have advanced at least 2 slots
+        assert result.block_producer.current_slot >= 2
+
+        # At least some transactions should be cleaned up (included in blocks)
+        tx_remaining = sum(1 for tx in tx_hashes if result.nodes[0].pool.contains(tx))
+        assert tx_remaining < 5  # Some txs should have been included
 
 
 class TestLargeScale:
