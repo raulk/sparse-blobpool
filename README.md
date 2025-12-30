@@ -168,7 +168,7 @@ print(json.dumps(metrics.to_dict(), indent=2))
 ## Architecture
 
 ```
-sparse_blobpool/
+src/sparse_blobpool/
 ├── core/           # Simulator, Actor, Network, BlockProducer
 ├── protocol/       # Messages, Blobpool, constants
 ├── p2p/            # Node actor, topology generation
