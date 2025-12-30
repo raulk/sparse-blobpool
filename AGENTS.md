@@ -22,13 +22,14 @@ Use `uv` for all dependency management:
 
 ## Project structure
 
-Use flat layout:
+Use src layout:
 
 ```
 project/
-├── packagename/
-│   ├── __init__.py
-│   └── ...
+├── src/
+│   └── packagename/
+│       ├── __init__.py
+│       └── ...
 ├── tests/
 │   └── ...
 └── pyproject.toml
