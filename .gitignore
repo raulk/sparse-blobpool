@@ -11,6 +11,7 @@ build/
 eggs/
 *.manifest
 *.spec
+.hypothesis
 
 # Virtual environments
 .venv/
@@ -48,3 +49,5 @@ Thumbs.db
 .agent
 # Continuous Claude cache (local only)
 .claude/cache/
+.claude/tsc-cache/
+thoughts/ledgers/
