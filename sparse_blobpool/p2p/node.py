@@ -11,6 +11,7 @@ from ..core.actor import Actor, EventPayload, Message, TimerKind, TimerPayload
 from ..pool.blobpool import Blobpool, BlobTxEntry, PoolFull, RBFRejected, SenderLimitExceeded
 from ..protocol.constants import ALL_ONES
 from ..protocol.messages import (
+    BlockAnnouncement,
     Cells,
     GetCells,
     GetPooledTransactions,
@@ -127,10 +128,14 @@ class Node(Actor):
                 self._handle_get_cells(msg)
             case Cells() as msg:
                 self._handle_cells(msg)
+            case BlockAnnouncement() as msg:
+                self._handle_block_announcement(msg)
             case TimerPayload(kind=TimerKind.REQUEST_TIMEOUT, context=ctx):
                 self._handle_request_timeout(ctx)
             case TimerPayload(kind=TimerKind.PROVIDER_OBSERVATION_TIMEOUT, context=ctx):
                 self._handle_provider_observation_timeout(ctx)
+            case TimerPayload(kind=TimerKind.TX_CLEANUP, context=ctx):
+                self._handle_tx_cleanup(ctx)
             case Message():
                 pass  # Unknown message type
 
@@ -583,3 +588,34 @@ class Node(Actor):
         else:
             # No peers, drop the tx
             self._pending_txs.pop(tx_hash, None)
+
+    def _handle_block_announcement(self, msg: BlockAnnouncement) -> None:
+        """Handle a block announcement by marking included txs for cleanup."""
+        for tx_hash in msg.block.blob_tx_hashes:
+            # Remove from pending if still there
+            self._pending_txs.pop(tx_hash, None)
+
+            # Schedule cleanup for txs in our pool
+            if self._pool.contains(tx_hash):
+                self._schedule_tx_cleanup(tx_hash)
+
+    def _schedule_tx_cleanup(self, tx_hash: TxHash) -> None:
+        """Schedule cleanup of an included transaction after a short delay."""
+        # Delay cleanup slightly to allow block propagation
+        cleanup_delay = 2.0  # seconds
+        self.schedule_timer(
+            delay=cleanup_delay,
+            kind=TimerKind.TX_CLEANUP,
+            context={"tx_hash": tx_hash},
+        )
+
+    def _handle_tx_cleanup(self, context: dict[str, object]) -> None:
+        """Remove a transaction from the pool after block inclusion."""
+        tx_hash = context.get("tx_hash")
+        if not isinstance(tx_hash, str):
+            return
+
+        from ..core.types import TxHash
+
+        tx_hash = TxHash(tx_hash)
+        self._pool.remove(tx_hash)
