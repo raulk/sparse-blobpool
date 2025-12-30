@@ -262,6 +262,33 @@ class TestSimulator:
         with pytest.raises(RuntimeError, match="unknown actor"):
             sim.run(until=2.0)
 
+    def test_actors_by_type(self) -> None:
+        """actors_by_type filters actors by their class."""
+        sim = Simulator()
+
+        class TypeA(Actor):
+            def on_event(self, payload: EventPayload) -> None:
+                pass
+
+        class TypeB(Actor):
+            def on_event(self, payload: EventPayload) -> None:
+                pass
+
+        a1 = TypeA(ActorId("a1"), sim)
+        a2 = TypeA(ActorId("a2"), sim)
+        b1 = TypeB(ActorId("b1"), sim)
+        sim.register_actor(a1)
+        sim.register_actor(a2)
+        sim.register_actor(b1)
+
+        type_a_actors = sim.actors_by_type(TypeA)
+        type_b_actors = sim.actors_by_type(TypeB)
+
+        assert len(type_a_actors) == 2
+        assert len(type_b_actors) == 1
+        assert all(isinstance(a, TypeA) for a in type_a_actors)
+        assert all(isinstance(b, TypeB) for b in type_b_actors)
+
 
 class TestActorTimerScheduling:
     def test_schedule_timer(self) -> None:

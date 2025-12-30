@@ -46,3 +46,5 @@ Thumbs.db
 .work/
 
 .agent
+# Continuous Claude cache (local only)
+.claude/cache/
