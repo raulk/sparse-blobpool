@@ -6,11 +6,11 @@ Guidelines for AI agents working on the sparse blobpool simulator.
 
 This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key components:
 
-- `src/sparse_blobpool/core/` - Simulator engine, Actor base, Network with CoDel
-- `src/sparse_blobpool/p2p/` - Node actor, topology generation
-- `src/sparse_blobpool/protocol/` - eth/71 messages, blobpool state
-- `src/sparse_blobpool/adversaries/` - Attack implementations
-- `src/sparse_blobpool/scenarios/` - Runnable simulation scenarios
+- `sparse_blobpool/core/` - Simulator engine, Actor base, Network with CoDel
+- `sparse_blobpool/p2p/` - Node actor, topology generation
+- `sparse_blobpool/protocol/` - eth/71 messages, blobpool state
+- `sparse_blobpool/adversaries/` - Attack implementations
+- `sparse_blobpool/scenarios/` - Runnable simulation scenarios
 - `tests/` - 210+ tests with hypothesis property-based testing
 
 ## Python version
@@ -33,14 +33,13 @@ Use `uv` for all dependency management:
 
 ## Project structure
 
-Use src layout:
+Use flat layout:
 
 ```
 project/
-├── src/
-│   └── packagename/
-│       ├── __init__.py
-│       └── ...
+├── packagename/
+│   ├── __init__.py
+│   └── ...
 ├── tests/
 │   └── ...
 └── pyproject.toml
