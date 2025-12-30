@@ -17,12 +17,14 @@ from ..core.block_producer import BlockProducer, SlotConfig
 from ..core.network import Network
 from ..core.simulator import Event, Simulator
 from ..core.types import Address, TxHash
+from ..metrics.collector import MetricsCollector
 from ..p2p.node import Node
 from ..p2p.topology import build_topology
 from ..protocol.constants import ALL_ONES
 from ..protocol.messages import BroadcastTransaction
 
 if TYPE_CHECKING:
+    from ..metrics.results import SimulationResults
     from ..p2p.topology import TopologyResult
 
 
@@ -35,6 +37,11 @@ class SimulationResult:
     network: Network
     block_producer: BlockProducer
     topology: TopologyResult
+    metrics: MetricsCollector
+
+    def finalize_metrics(self) -> SimulationResults:
+        """Finalize and return simulation metrics."""
+        return self.metrics.finalize()
 
 
 def build_simulation(config: SimulationConfig | None = None) -> SimulationResult:
@@ -56,10 +63,14 @@ def build_simulation(config: SimulationConfig | None = None) -> SimulationResult
     # Create simulator with seeded RNG
     simulator = Simulator(seed=config.seed)
 
+    # Create metrics collector
+    metrics = MetricsCollector(simulator=simulator)
+
     # Create and register Network actor
     network = Network(
         simulator=simulator,
         default_bandwidth=config.default_bandwidth,
+        metrics=metrics,
     )
     simulator.register_actor(network)
 
@@ -74,12 +85,14 @@ def build_simulation(config: SimulationConfig | None = None) -> SimulationResult
             simulator=simulator,
             config=config,
             custody_columns=config.custody_columns,
+            metrics=metrics,
         )
         simulator.register_actor(node)
         nodes.append(node)
 
-        # Register node with network for latency calculations
+        # Register node with network and metrics for region tracking
         network.register_node(node_info.actor_id, node_info.region)
+        metrics.register_node(node_info.actor_id, node_info.region)
 
     # Build node lookup for peer connections
     node_lookup = {node.id: node for node in nodes}
@@ -109,6 +122,7 @@ def build_simulation(config: SimulationConfig | None = None) -> SimulationResult
         network=network,
         block_producer=block_producer,
         topology=topology,
+        metrics=metrics,
     )
 
 
@@ -202,6 +216,7 @@ def run_baseline_scenario(
 
 def main() -> None:
     """Run baseline scenario and print summary statistics."""
+    import json
     import time
 
     print("Building simulation with 2000 nodes...")
@@ -258,6 +273,23 @@ def main() -> None:
         nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))
         pct = 100 * nodes_with_tx / len(result.nodes)
         print(f"{tx_hash[:16]}...: {nodes_with_tx}/{len(result.nodes)} nodes ({pct:.1f}%)")
+
+    # Finalize and print metrics
+    print("\n=== Metrics Analysis ===")
+    metrics_results = result.finalize_metrics()
+    print(f"Total bandwidth: {metrics_results.total_bandwidth_bytes / 1024 / 1024:.1f} MB")
+    print(f"Bandwidth per blob: {metrics_results.bandwidth_per_blob / 1024:.1f} KB")
+    print(f"Bandwidth reduction vs full: {metrics_results.bandwidth_reduction_vs_full:.2f}x")
+    print(f"Median propagation time: {metrics_results.median_propagation_time:.3f}s")
+    print(f"P99 propagation time: {metrics_results.p99_propagation_time:.3f}s")
+    print(f"Propagation success rate: {metrics_results.propagation_success_rate * 100:.1f}%")
+    print(f"Observed provider ratio: {metrics_results.observed_provider_ratio:.3f}")
+    print(f"Reconstruction success rate: {metrics_results.reconstruction_success_rate * 100:.1f}%")
+
+    # Export to JSON
+    print("\n=== Exporting to JSON ===")
+    json_output = json.dumps(metrics_results.to_dict(), indent=2)
+    print(json_output)
 
 
 if __name__ == "__main__":

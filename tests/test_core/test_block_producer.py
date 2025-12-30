@@ -12,6 +12,7 @@ from sparse_blobpool.core.block_producer import (
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, Address, TxHash
+from sparse_blobpool.metrics.collector import MetricsCollector
 from sparse_blobpool.p2p.node import Node
 from sparse_blobpool.pool.blobpool import BlobTxEntry
 from sparse_blobpool.protocol.constants import ALL_ONES
@@ -37,9 +38,15 @@ def simulator() -> Simulator:
 
 
 @pytest.fixture
-def network(simulator: Simulator) -> Network:
+def metrics(simulator: Simulator) -> MetricsCollector:
+    """Create a metrics collector."""
+    return MetricsCollector(simulator=simulator)
+
+
+@pytest.fixture
+def network(simulator: Simulator, metrics: MetricsCollector) -> Network:
     """Create and register network actor."""
-    net = Network(simulator)
+    net = Network(simulator, metrics)
     simulator.register_actor(net)
     return net
 
@@ -65,7 +72,8 @@ def create_node(
     node_id: str,
 ) -> Node:
     """Helper to create and register a node."""
-    node = Node(ActorId(node_id), simulator, config, custody_columns=8)
+    metrics = MetricsCollector(simulator=simulator)
+    node = Node(ActorId(node_id), simulator, config, custody_columns=8, metrics=metrics)
     simulator.register_actor(node)
     network.register_node(node.id, region=None)
     return node

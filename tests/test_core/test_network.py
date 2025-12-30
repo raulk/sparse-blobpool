@@ -7,6 +7,13 @@ from sparse_blobpool.core.actor import Actor, EventPayload, Message
 from sparse_blobpool.core.network import LATENCY_DEFAULTS, LatencyParams, Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId
+from sparse_blobpool.metrics.collector import MetricsCollector
+
+
+def make_network(sim: Simulator, **kwargs) -> Network:  # type: ignore[no-untyped-def]
+    """Create network with default metrics."""
+    metrics = MetricsCollector(simulator=sim)
+    return Network(sim, metrics, **kwargs)
 
 
 @dataclass
@@ -63,7 +70,7 @@ class TestNetwork:
     def test_network_creation(self) -> None:
         """Network actor can be created and registered."""
         sim = Simulator()
-        network = Network(sim)
+        network = make_network(sim)
         sim.register_actor(network)
 
         assert network.id == ActorId("network")
@@ -73,7 +80,7 @@ class TestNetwork:
     def test_message_delivery(self) -> None:
         """Messages are delivered to target actors."""
         sim = Simulator()
-        network = Network(sim)
+        network = make_network(sim)
         sim.register_actor(network)
 
         sender = RecordingActor(ActorId("sender"), sim)
@@ -98,7 +105,7 @@ class TestNetwork:
     def test_message_delivery_has_latency(self) -> None:
         """Message delivery takes time based on latency model."""
         sim = Simulator()
-        network = Network(sim)
+        network = make_network(sim)
         sim.register_actor(network)
 
         sender = RecordingActor(ActorId("sender"), sim)
@@ -124,7 +131,7 @@ class TestNetwork:
         """Cross-region messages have higher latency than same-region."""
         # Same-region test
         sim1 = Simulator(seed=42)
-        network1 = Network(sim1)
+        network1 = make_network(sim1)
         sim1.register_actor(network1)
 
         sender1 = RecordingActor(ActorId("sender"), sim1)
@@ -143,7 +150,7 @@ class TestNetwork:
 
         # Cross-region test
         sim2 = Simulator(seed=42)
-        network2 = Network(sim2)
+        network2 = make_network(sim2)
         sim2.register_actor(network2)
 
         sender2 = RecordingActor(ActorId("sender"), sim2)
@@ -166,7 +173,7 @@ class TestNetwork:
     def test_larger_messages_take_longer(self) -> None:
         """Larger messages take longer to transmit."""
         sim1 = Simulator(seed=42)
-        network1 = Network(sim1, default_bandwidth=1_000_000)  # 1 MB/s
+        network1 = make_network(sim1, default_bandwidth=1_000_000)  # 1 MB/s
         sim1.register_actor(network1)
 
         sender1 = RecordingActor(ActorId("sender"), sim1)
@@ -186,7 +193,7 @@ class TestNetwork:
 
         # Large message
         sim2 = Simulator(seed=42)
-        network2 = Network(sim2, default_bandwidth=1_000_000)
+        network2 = make_network(sim2, default_bandwidth=1_000_000)
         sim2.register_actor(network2)
 
         sender2 = RecordingActor(ActorId("sender"), sim2)
@@ -209,7 +216,7 @@ class TestNetwork:
     def test_bandwidth_accounting(self) -> None:
         """Network tracks total bytes transmitted."""
         sim = Simulator()
-        network = Network(sim)
+        network = make_network(sim)
         sim.register_actor(network)
 
         sender = RecordingActor(ActorId("sender"), sim)
@@ -240,7 +247,7 @@ class TestNetwork:
         }
 
         sim = Simulator(seed=42)
-        network = Network(sim, latency_matrix=custom_matrix)
+        network = make_network(sim, latency_matrix=custom_matrix)
         sim.register_actor(network)
 
         sender = RecordingActor(ActorId("sender"), sim)
@@ -263,7 +270,7 @@ class TestNetwork:
     def test_unregistered_nodes_use_defaults(self) -> None:
         """Unregistered nodes default to NA region."""
         sim = Simulator()
-        network = Network(sim)
+        network = make_network(sim)
         sim.register_actor(network)
 
         sender = RecordingActor(ActorId("sender"), sim)

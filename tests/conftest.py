@@ -4,6 +4,7 @@ import pytest
 
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
+from sparse_blobpool.metrics.collector import MetricsCollector
 
 
 @pytest.fixture
@@ -13,8 +14,16 @@ def simulator() -> Simulator:
 
 
 @pytest.fixture
-def simulator_with_network(simulator: Simulator) -> tuple[Simulator, Network]:
+def metrics(simulator: Simulator) -> MetricsCollector:
+    """Create a metrics collector."""
+    return MetricsCollector(simulator=simulator)
+
+
+@pytest.fixture
+def simulator_with_network(
+    simulator: Simulator, metrics: MetricsCollector
+) -> tuple[Simulator, Network]:
     """Create a simulator with network actor registered."""
-    network = Network(simulator)
+    network = Network(simulator, metrics)
     simulator.register_actor(network)
     return simulator, network
