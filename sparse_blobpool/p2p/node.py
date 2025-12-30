@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ..config import SimulationConfig
     from ..core.simulator import Simulator
     from ..core.types import ActorId, RequestId, TxHash
+    from ..metrics.collector import MetricsCollector
 
 
 class Role(Enum):
@@ -83,11 +84,13 @@ class Node(Actor):
         simulator: Simulator,
         config: SimulationConfig,
         custody_columns: int,
+        metrics: MetricsCollector | None = None,
     ) -> None:
         super().__init__(actor_id, simulator)
         self._config = config
         self._pool = Blobpool(config)
         self._custody_columns = custody_columns
+        self._metrics = metrics
 
         # Peer connections
         self._peers: set[ActorId] = set()
@@ -163,6 +166,13 @@ class Node(Actor):
 
         try:
             self._pool.add(entry)
+
+            # Record metrics - origin node is always a provider with full blob
+            if self._metrics is not None:
+                self._metrics.record_tx_seen(
+                    self._id, msg.tx_hash, Role.PROVIDER, msg.cell_mask
+                )
+
             self._announce_tx(entry)
         except (RBFRejected, SenderLimitExceeded, PoolFull):
             pass  # Transaction rejected
@@ -512,6 +522,11 @@ class Node(Actor):
 
         try:
             self._pool.add(entry)
+
+            # Record metrics
+            if self._metrics is not None:
+                self._metrics.record_tx_seen(self._id, tx_hash, pending.role, cell_mask)
+
             # Announce to peers
             self._announce_tx(entry)
         except (RBFRejected, SenderLimitExceeded, PoolFull):
@@ -625,6 +640,10 @@ class Node(Actor):
 
             # Schedule cleanup for txs in our pool
             if self._pool.contains(tx_hash):
+                # Record inclusion metrics
+                if self._metrics is not None:
+                    self._metrics.record_inclusion(tx_hash, msg.block.slot)
+
                 self._schedule_tx_cleanup(tx_hash)
 
     def _schedule_tx_cleanup(self, tx_hash: TxHash) -> None:

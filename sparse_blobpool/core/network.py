@@ -11,6 +11,7 @@ from .simulator import Event
 from .types import NETWORK_ACTOR_ID, ActorId
 
 if TYPE_CHECKING:
+    from ..metrics.collector import MetricsCollector
     from .simulator import Simulator
 
 
@@ -54,10 +55,12 @@ class Network(Actor):
         simulator: Simulator,
         latency_matrix: dict[tuple[Region, Region], LatencyParams] | None = None,
         default_bandwidth: float = 100 * 1024 * 1024,  # 100 MB/s
+        metrics: MetricsCollector | None = None,
     ) -> None:
         super().__init__(NETWORK_ACTOR_ID, simulator)
         self._latency_matrix = latency_matrix or LATENCY_DEFAULTS
         self._default_bandwidth = default_bandwidth
+        self._metrics = metrics
 
         # Actor metadata
         self._actor_regions: dict[ActorId, Region] = {}
@@ -102,6 +105,20 @@ class Network(Actor):
 
         self._messages_delivered += 1
         self._total_bytes += msg.size_bytes
+
+        # Record to metrics collector if available
+        if self._metrics is not None:
+            is_control = self._is_control_message(msg)
+            self._metrics.record_bandwidth(from_, to, msg.size_bytes, is_control)
+
+    def _is_control_message(self, msg: Message) -> bool:
+        """Determine if a message is control (announcements) vs data (cells)."""
+        # Import here to avoid circular dependencies
+        from ..protocol.messages import Cells, GetCells, PooledTransactions
+
+        # Data messages: actual cell/blob content
+        # Control messages: announcements, requests, other protocol overhead
+        return not isinstance(msg, Cells | PooledTransactions | GetCells)
 
     def _calculate_delay(self, from_: ActorId, to: ActorId, size_bytes: int) -> float:
         """Calculate total delay for a message.
