@@ -13,7 +13,7 @@ from sparse_blobpool.actors.block_producer import BlockProducer
 from sparse_blobpool.actors.honest import Node
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.network import Network
-from sparse_blobpool.core.simulator import Event, Simulator
+from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.topology import build_topology
 from sparse_blobpool.core.types import Address, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
@@ -118,12 +118,9 @@ def broadcast_transaction(
         rand_bytes = sim.rng.randbytes(32)
         tx_hash = TxHash(rand_bytes.hex())
 
-    # Schedule immediate event to the origin node
-    event = Event(
-        timestamp=sim.current_time,
-        target_id=origin_node.id,
-        payload=BroadcastTransaction(
-            sender=origin_node.id,
+    # Deliver command to the origin node
+    sim.deliver_command(
+        BroadcastTransaction(
             tx_hash=tx_hash,
             tx_sender=Address(f"0x{tx_hash[:40]}"),  # Derive fake sender from hash
             nonce=0,
@@ -134,8 +131,8 @@ def broadcast_transaction(
             blob_count=1,
             cell_mask=ALL_ONES,  # Origin has full blob
         ),
+        origin_node.id,
     )
-    sim.schedule(event)
 
     return tx_hash
 

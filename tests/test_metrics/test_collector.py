@@ -106,8 +106,16 @@ class TestMetricsCollector:
         assert results.observed_provider_ratio == 1.0  # All providers
 
     def test_snapshot_creates_timeseries(self) -> None:
-        from sparse_blobpool.core.actor import Actor, EventPayload, TimerKind, TimerPayload
+        from dataclasses import dataclass
+
+        from sparse_blobpool.core.actor import Actor, Command, EventPayload
         from sparse_blobpool.core.simulator import Event
+
+        @dataclass
+        class DummyCommand(Command):
+            @property
+            def size_bytes(self) -> int:
+                return 0
 
         sim = Simulator()
         metrics = MetricsCollector(simulator=sim, sample_interval=1.0)
@@ -122,9 +130,7 @@ class TestMetricsCollector:
 
         # Schedule and process an event to advance time
         sim.schedule(
-            Event(
-                timestamp=2.0, target_id=ActorId("dummy"), payload=TimerPayload(TimerKind.SLOT_TICK)
-            )
+            Event(timestamp=2.0, target_id=ActorId("dummy"), payload=DummyCommand())
         )
         sim.run(until=3.0)
 

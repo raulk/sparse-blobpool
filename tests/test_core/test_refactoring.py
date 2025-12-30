@@ -133,13 +133,12 @@ class TestUnifiedNodes:
 class TestProduceBlockMessage:
     """Tests for ProduceBlock message handling in Node."""
 
-    def test_produce_block_message_exists(self) -> None:
-        """ProduceBlock message type should exist."""
+    def test_produce_block_command_exists(self) -> None:
+        """ProduceBlock command type should exist."""
         from sparse_blobpool.protocol.commands import ProduceBlock
 
-        msg = ProduceBlock(sender=ActorId("block-producer"), slot=1)
-        assert msg.slot == 1
-        assert msg.sender == ActorId("block-producer")
+        cmd = ProduceBlock(slot=1)
+        assert cmd.slot == 1
 
     def test_node_handles_produce_block_event(
         self,
@@ -147,7 +146,7 @@ class TestProduceBlockMessage:
         network: Network,
         config: SimulationConfig,
     ) -> None:
-        """Node should handle ProduceBlock message and produce a block."""
+        """Node should handle ProduceBlock command and produce a block."""
         from sparse_blobpool.protocol.commands import ProduceBlock
 
         node = create_node(simulator, network, config, "node-1")
@@ -156,9 +155,9 @@ class TestProduceBlockMessage:
         tx = create_blob_tx("0x" + "aa" * 32, "0x" + "11" * 20)
         node.pool.add(tx)
 
-        # Send ProduceBlock message
-        msg = ProduceBlock(sender=ActorId("block-producer"), slot=0)
-        node.on_event(msg)
+        # Send ProduceBlock command
+        cmd = ProduceBlock(slot=0)
+        node.on_event(cmd)
 
         # Node should have broadcast BlockAnnouncement (via network)
         # The tx should be scheduled for cleanup (meaning block was produced)
@@ -196,8 +195,8 @@ class TestProduceBlockMessage:
         assert node3.pool.contains(tx.tx_hash)
 
         # Produce block on node1
-        msg = ProduceBlock(sender=ActorId("block-producer"), slot=0)
-        node1.on_event(msg)
+        cmd = ProduceBlock(slot=0)
+        node1.on_event(cmd)
 
         # Run past cleanup delay (2s) + network delay buffer
         simulator.run(until=4.0)

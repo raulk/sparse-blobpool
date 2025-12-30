@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sparse_blobpool.actors.honest import Node
 from sparse_blobpool.config import SimulationConfig
-from sparse_blobpool.core.actor import Actor, EventPayload, TimerKind, TimerPayload
+from sparse_blobpool.core.actor import Actor, EventPayload
 from sparse_blobpool.core.types import ActorId
-from sparse_blobpool.protocol.commands import ProduceBlock
+from sparse_blobpool.protocol.commands import ProduceBlock, SlotTick
 
 if TYPE_CHECKING:
+    from sparse_blobpool.actors.honest import Node
     from sparse_blobpool.core.simulator import Simulator
 
 
@@ -32,14 +32,11 @@ class BlockProducer(Actor):
         return self._current_slot
 
     def start(self) -> None:
-        self.schedule_timer(
-            delay=self._config.slot_duration,
-            kind=TimerKind.SLOT_TICK,
-        )
+        self.schedule_command(self._config.slot_duration, SlotTick())
 
     def on_event(self, payload: EventPayload) -> None:
         match payload:
-            case TimerPayload(kind=TimerKind.SLOT_TICK):
+            case SlotTick():
                 self._on_slot_tick()
 
     def _on_slot_tick(self) -> None:
@@ -49,8 +46,7 @@ class BlockProducer(Actor):
             return
 
         proposer = self._select_proposer(nodes)
-        msg = ProduceBlock(sender=self._id, slot=self._current_slot)
-        self.send(msg, proposer.id)
+        self._simulator.deliver_command(ProduceBlock(slot=self._current_slot), proposer.id)
 
         self._advance_slot()
 
@@ -59,7 +55,4 @@ class BlockProducer(Actor):
 
     def _advance_slot(self) -> None:
         self._current_slot += 1
-        self.schedule_timer(
-            delay=self._config.slot_duration,
-            kind=TimerKind.SLOT_TICK,
-        )
+        self.schedule_command(self._config.slot_duration, SlotTick())

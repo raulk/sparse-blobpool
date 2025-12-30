@@ -1,10 +1,23 @@
 """Tests for the discrete event simulator."""
 
+from dataclasses import dataclass
+
 import pytest
 
-from sparse_blobpool.core.actor import Actor, EventPayload, TimerKind, TimerPayload
+from sparse_blobpool.core.actor import Actor, Command, EventPayload
 from sparse_blobpool.core.simulator import Event, Simulator
 from sparse_blobpool.core.types import ActorId
+
+
+@dataclass
+class DummyCommand(Command):
+    """Simple command for testing."""
+
+    order: int = 0
+
+    @property
+    def size_bytes(self) -> int:
+        return 0
 
 
 class RecordingActor(Actor):
@@ -25,13 +38,13 @@ class TestEvent:
             timestamp=1.0,
             priority=0,
             target_id=ActorId("a"),
-            payload=TimerPayload(TimerKind.SLOT_TICK),
+            payload=DummyCommand(),
         )
         e2 = Event(
             timestamp=2.0,
             priority=0,
             target_id=ActorId("a"),
-            payload=TimerPayload(TimerKind.SLOT_TICK),
+            payload=DummyCommand(),
         )
 
         assert e1 < e2
@@ -42,13 +55,13 @@ class TestEvent:
             timestamp=1.0,
             priority=0,
             target_id=ActorId("a"),
-            payload=TimerPayload(TimerKind.SLOT_TICK),
+            payload=DummyCommand(),
         )
         e2 = Event(
             timestamp=1.0,
             priority=1,
             target_id=ActorId("a"),
-            payload=TimerPayload(TimerKind.SLOT_TICK),
+            payload=DummyCommand(),
         )
 
         assert e1 < e2
@@ -59,13 +72,13 @@ class TestEvent:
             timestamp=1.0,
             priority=0,
             target_id=ActorId("a"),
-            payload=TimerPayload(TimerKind.SLOT_TICK),
+            payload=DummyCommand(),
         )
         e2 = Event(
             timestamp=1.0,
             priority=0,
             target_id=ActorId("b"),
-            payload=TimerPayload(TimerKind.RESAMPLING),
+            payload=DummyCommand(order=99),
         )
 
         # They compare equal because target_id and payload are not compared
@@ -108,7 +121,7 @@ class TestSimulator:
             timestamp=1.0,
             priority=0,
             target_id=ActorId("test"),
-            payload=TimerPayload(TimerKind.SLOT_TICK),
+            payload=DummyCommand(),
         )
         sim.schedule(event)
 
@@ -122,9 +135,7 @@ class TestSimulator:
 
         # Advance time
         sim.schedule(
-            Event(
-                timestamp=1.0, target_id=ActorId("test"), payload=TimerPayload(TimerKind.SLOT_TICK)
-            )
+            Event(timestamp=1.0, target_id=ActorId("test"), payload=DummyCommand())
         )
         sim.run(until=2.0)
 
@@ -134,7 +145,7 @@ class TestSimulator:
                 Event(
                     timestamp=0.5,
                     target_id=ActorId("test"),
-                    payload=TimerPayload(TimerKind.SLOT_TICK),
+                    payload=DummyCommand(),
                 )
             )
 
@@ -149,30 +160,30 @@ class TestSimulator:
             Event(
                 timestamp=3.0,
                 target_id=ActorId("test"),
-                payload=TimerPayload(TimerKind.SLOT_TICK, {"order": 3}),
+                payload=DummyCommand(order=3),
             )
         )
         sim.schedule(
             Event(
                 timestamp=1.0,
                 target_id=ActorId("test"),
-                payload=TimerPayload(TimerKind.SLOT_TICK, {"order": 1}),
+                payload=DummyCommand(order=1),
             )
         )
         sim.schedule(
             Event(
                 timestamp=2.0,
                 target_id=ActorId("test"),
-                payload=TimerPayload(TimerKind.SLOT_TICK, {"order": 2}),
+                payload=DummyCommand(order=2),
             )
         )
 
         sim.run(until=10.0)
 
         assert len(actor.events) == 3
-        assert actor.events[0].context["order"] == 1  # type: ignore[union-attr]
-        assert actor.events[1].context["order"] == 2  # type: ignore[union-attr]
-        assert actor.events[2].context["order"] == 3  # type: ignore[union-attr]
+        assert actor.events[0].order == 1  # type: ignore[union-attr]
+        assert actor.events[1].order == 2  # type: ignore[union-attr]
+        assert actor.events[2].order == 3  # type: ignore[union-attr]
 
     def test_run_advances_time(self) -> None:
         """Simulation time advances as events are processed."""
@@ -181,9 +192,7 @@ class TestSimulator:
         sim.register_actor(actor)
 
         sim.schedule(
-            Event(
-                timestamp=5.0, target_id=ActorId("test"), payload=TimerPayload(TimerKind.SLOT_TICK)
-            )
+            Event(timestamp=5.0, target_id=ActorId("test"), payload=DummyCommand())
         )
         sim.run(until=10.0)
 
@@ -196,14 +205,10 @@ class TestSimulator:
         sim.register_actor(actor)
 
         sim.schedule(
-            Event(
-                timestamp=5.0, target_id=ActorId("test"), payload=TimerPayload(TimerKind.SLOT_TICK)
-            )
+            Event(timestamp=5.0, target_id=ActorId("test"), payload=DummyCommand())
         )
         sim.schedule(
-            Event(
-                timestamp=15.0, target_id=ActorId("test"), payload=TimerPayload(TimerKind.SLOT_TICK)
-            )
+            Event(timestamp=15.0, target_id=ActorId("test"), payload=DummyCommand())
         )
 
         sim.run(until=10.0)
@@ -221,14 +226,14 @@ class TestSimulator:
             Event(
                 timestamp=100.0,
                 target_id=ActorId("test"),
-                payload=TimerPayload(TimerKind.SLOT_TICK),
+                payload=DummyCommand(),
             )
         )
         sim.schedule(
             Event(
                 timestamp=200.0,
                 target_id=ActorId("test"),
-                payload=TimerPayload(TimerKind.SLOT_TICK),
+                payload=DummyCommand(),
             )
         )
 
@@ -255,7 +260,7 @@ class TestSimulator:
             Event(
                 timestamp=1.0,
                 target_id=ActorId("unknown"),
-                payload=TimerPayload(TimerKind.SLOT_TICK),
+                payload=DummyCommand(),
             )
         )
 
@@ -290,33 +295,47 @@ class TestSimulator:
         assert all(isinstance(b, TypeB) for b in type_b_actors)
 
 
-class TestActorTimerScheduling:
-    def test_schedule_timer(self) -> None:
-        """Actors can schedule timers for themselves."""
+class TestActorCommandScheduling:
+    def test_schedule_command(self) -> None:
+        """Actors can schedule commands for themselves."""
         sim = Simulator()
-        actor = RecordingActor(ActorId("test"), sim)
-        sim.register_actor(actor)
 
-        # Schedule initial event to trigger timer scheduling
-        class TimerSchedulingActor(Actor):
+        @dataclass
+        class DelayedCommand(Command):
+            delayed: bool = False
+
+            @property
+            def size_bytes(self) -> int:
+                return 0
+
+        class CommandSchedulingActor(Actor):
+            def __init__(self, actor_id: ActorId, simulator: Simulator) -> None:
+                super().__init__(actor_id, simulator)
+                self.received_delayed = False
+
             def on_event(self, payload: EventPayload) -> None:
-                if isinstance(payload, TimerPayload) and payload.context.get("initial"):
-                    self.schedule_timer(1.0, TimerKind.RESAMPLING, {"delayed": True})
+                match payload:
+                    case DummyCommand():
+                        self.schedule_command(1.0, DelayedCommand(delayed=True))
+                    case DelayedCommand(delayed=True):
+                        self.received_delayed = True
 
-        timer_actor = TimerSchedulingActor(ActorId("timer_test"), sim)
-        sim.register_actor(timer_actor)
+        actor = CommandSchedulingActor(ActorId("test"), sim)
+        sim.register_actor(actor)
 
         # Manually schedule initial event
         sim.schedule(
             Event(
                 timestamp=0.0,
-                target_id=ActorId("timer_test"),
-                payload=TimerPayload(TimerKind.SLOT_TICK, {"initial": True}),
+                target_id=ActorId("test"),
+                payload=DummyCommand(),
             )
         )
 
         sim.run(until=0.5)
-        assert sim.pending_event_count() == 1  # Timer scheduled for 1.0
+        assert sim.pending_event_count() == 1  # Command scheduled for 1.0
+        assert not actor.received_delayed
 
         sim.run(until=2.0)
-        assert sim.current_time == 1.0  # Timer was processed
+        assert sim.current_time == 1.0  # Command was processed
+        assert actor.received_delayed

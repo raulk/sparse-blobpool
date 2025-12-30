@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sparse_blobpool.core.types import ActorId
     from sparse_blobpool.metrics.collector import MetricsCollector
     from sparse_blobpool.metrics.results import SimulationResults
+    from sparse_blobpool.protocol.commands import Command
 
 ActorT = TypeVar("ActorT", bound="Actor")
 
@@ -74,7 +75,6 @@ class Simulator:
 
     @property
     def nodes(self) -> list[Node]:
-        """Return all Node actors registered with this simulator."""
         from sparse_blobpool.actors.honest import Node
 
         return [actor for actor in self._actors.values() if isinstance(actor, Node)]
@@ -117,6 +117,17 @@ class Simulator:
                 f"Cannot schedule event in the past: {event.timestamp} < {self._current_time}"
             )
         heapq.heappush(self._event_queue, event)
+
+    def deliver_command(self, command: Command, target_id: ActorId) -> None:
+        """Deliver a command immediately to a target actor."""
+        self.schedule(
+            Event(
+                timestamp=self._current_time,
+                priority=0,
+                target_id=target_id,
+                payload=command,
+            )
+        )
 
     def run(self, until: float) -> None:
         """Processes events in timestamp order up to the specified time."""
