@@ -27,9 +27,6 @@ cd sparse-blobpool-sim
 
 # Install dependencies
 uv sync
-
-# Install package in development mode
-uv pip install -e .
 ```
 
 ## Quick Start
@@ -176,7 +173,7 @@ print(json.dumps(metrics.to_dict(), indent=2))
 ## Architecture
 
 ```
-src/sparse_blobpool/
+sparse_blobpool/
 ├── core/           # Simulator, Actor, Network, BlockProducer
 ├── protocol/       # Messages, Blobpool, constants
 ├── p2p/            # Node actor, topology generation
