@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..core.types import ActorId, Region, TxHash
+    from sparse_blobpool.core.types import ActorId, Region, TxHash
 
 
 @dataclass

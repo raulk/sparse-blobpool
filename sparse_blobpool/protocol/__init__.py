@@ -1,6 +1,6 @@
 """Protocol layer: messages, blobpool, and node behavior."""
 
-from .constants import (
+from sparse_blobpool.protocol.constants import (
     ALL_ONES,
     CELL_SIZE,
     CELLS_PER_BLOB,
@@ -8,9 +8,9 @@ from .constants import (
     MESSAGE_OVERHEAD,
     RECONSTRUCTION_THRESHOLD,
 )
-from .messages import (
+from sparse_blobpool.protocol.messages import (
     Block,
-    BlockAnnouncement,
+    BlockBroadcast,
     Cell,
     Cells,
     GetCells,
@@ -28,7 +28,7 @@ __all__ = [
     "MESSAGE_OVERHEAD",
     "RECONSTRUCTION_THRESHOLD",
     "Block",
-    "BlockAnnouncement",
+    "BlockBroadcast",
     "Cell",
     "Cells",
     "GetCells",

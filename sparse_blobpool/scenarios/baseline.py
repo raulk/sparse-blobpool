@@ -9,16 +9,16 @@ configured simulator with:
 
 from __future__ import annotations
 
-from ..config import SimulationConfig
-from ..core.block_producer import BlockProducer
-from ..core.network import Network
-from ..core.simulator import Event, Simulator
-from ..core.types import Address, TxHash
-from ..metrics.collector import MetricsCollector
-from ..p2p.node import Node
-from ..p2p.topology import build_topology
-from ..protocol.constants import ALL_ONES
-from ..protocol.messages import BroadcastTransaction
+from sparse_blobpool.actors.block_producer import BlockProducer
+from sparse_blobpool.config import SimulationConfig
+from sparse_blobpool.core.network import Network
+from sparse_blobpool.core.simulator import Event, Simulator
+from sparse_blobpool.core.types import Address, TxHash
+from sparse_blobpool.metrics.collector import MetricsCollector
+from sparse_blobpool.p2p.node import Node
+from sparse_blobpool.p2p.topology import build_topology
+from sparse_blobpool.protocol.constants import ALL_ONES
+from sparse_blobpool.protocol.messages import BroadcastTransaction
 
 
 def build_simulator(config: SimulationConfig | None = None) -> Simulator:

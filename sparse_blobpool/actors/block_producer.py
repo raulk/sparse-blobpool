@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..config import SimulationConfig
-from ..core.actor import Actor, EventPayload, TimerKind, TimerPayload
-from ..core.types import ActorId
-from ..protocol.messages import ProduceBlock
+from sparse_blobpool.config import SimulationConfig
+from sparse_blobpool.core.actor import Actor, EventPayload, TimerKind, TimerPayload
+from sparse_blobpool.core.types import ActorId
+from sparse_blobpool.protocol.messages import ProduceBlock
 
 if TYPE_CHECKING:
-    from ..core.simulator import Simulator
+    from sparse_blobpool.core.simulator import Simulator
 
 
 BLOCK_PRODUCER_ID = ActorId("block-producer")

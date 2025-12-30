@@ -7,18 +7,19 @@ from dataclasses import dataclass, field
 from random import Random
 from typing import TYPE_CHECKING, TypeVar
 
-from .actor import SendRequest
-from .types import NETWORK_ACTOR_ID
+from sparse_blobpool.core.actor import SendRequest
+from sparse_blobpool.core.types import NETWORK_ACTOR_ID
 
 if TYPE_CHECKING:
-    from ..metrics.collector import MetricsCollector
+    from sparse_blobpool.actors.block_producer import BlockProducer
+    from sparse_blobpool.core.actor import Actor, EventPayload
+    from sparse_blobpool.core.network import Network
+    from sparse_blobpool.core.types import ActorId
+    from sparse_blobpool.metrics.collector import MetricsCollector
+    from sparse_blobpool.p2p.node import Node
+    from sparse_blobpool.p2p.topology import TopologyResult
+
     from ..metrics.results import SimulationResults
-    from ..p2p.node import Node
-    from ..p2p.topology import TopologyResult
-    from .actor import Actor, EventPayload
-    from .block_producer import BlockProducer
-    from .network import Network
-    from .types import ActorId
 
 ActorT = TypeVar("ActorT", bound="Actor")
 
@@ -78,7 +79,7 @@ class Simulator:
     @property
     def nodes(self) -> list[Node]:
         """Return all Node actors registered with this simulator."""
-        from ..actors.honest import Node
+        from sparse_blobpool.actors.honest import Node
 
         return [actor for actor in self._actors.values() if isinstance(actor, Node)]
 

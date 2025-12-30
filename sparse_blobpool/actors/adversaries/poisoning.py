@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
+from sparse_blobpool.actors.adversaries.base import Adversary, AttackConfig
+
 from ...core.actor import TimerKind, TimerPayload
 from ...core.types import ActorId, Address, TxHash
 from ...protocol.constants import ALL_ONES
 from ...protocol.messages import NewPooledTransactionHashes
-from .base import Adversary, AttackConfig
 
 if TYPE_CHECKING:
     from ...core.simulator import Simulator

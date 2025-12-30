@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from sparse_blobpool.actors.adversaries.base import Adversary, AttackConfig
+
 from ...protocol.messages import Cells, GetCells
-from .base import Adversary, AttackConfig
 
 if TYPE_CHECKING:
     from ...core.actor import Message

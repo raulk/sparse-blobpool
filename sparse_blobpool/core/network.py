@@ -6,14 +6,14 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..config import Region
-from .simulator import Event
+from sparse_blobpool.config import Region
+from sparse_blobpool.core.simulator import Event
 
 if TYPE_CHECKING:
-    from ..metrics.collector import MetricsCollector
-    from .actor import Message, SendRequest
-    from .simulator import Simulator
-    from .types import ActorId
+    from sparse_blobpool.core.actor import Message, SendRequest
+    from sparse_blobpool.core.simulator import Simulator
+    from sparse_blobpool.core.types import ActorId
+    from sparse_blobpool.metrics.collector import MetricsCollector
 
 
 @dataclass(frozen=True)
@@ -141,7 +141,7 @@ class Network:
 
     def _is_control_message(self, msg: Message) -> bool:
         # Import here to avoid circular dependencies
-        from ..protocol.messages import Cells, GetCells, PooledTransactions
+        from sparse_blobpool.protocol.messages import Cells, GetCells, PooledTransactions
 
         # Data messages: actual cell/blob content
         # Control messages: announcements, requests, other protocol overhead

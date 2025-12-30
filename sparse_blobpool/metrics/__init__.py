@@ -1,7 +1,7 @@
 """Metrics collection and analysis for simulations."""
 
-from .collector import MetricsCollector
-from .results import (
+from sparse_blobpool.metrics.collector import MetricsCollector
+from sparse_blobpool.metrics.results import (
     BandwidthSnapshot,
     PropagationSnapshot,
     SimulationResults,

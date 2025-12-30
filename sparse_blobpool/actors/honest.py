@@ -7,13 +7,19 @@ from enum import Enum, auto
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
-from ..config import InclusionPolicy
-from ..core.actor import Actor, EventPayload, Message, TimerKind, TimerPayload
-from ..pool.blobpool import Blobpool, BlobTxEntry, PoolFull, RBFRejected, SenderLimitExceeded
-from ..protocol.constants import ALL_ONES
-from ..protocol.messages import (
+from sparse_blobpool.config import InclusionPolicy
+from sparse_blobpool.core.actor import Actor, EventPayload, Message, TimerKind, TimerPayload
+from sparse_blobpool.pool.blobpool import (
+    Blobpool,
+    BlobTxEntry,
+    PoolFull,
+    RBFRejected,
+    SenderLimitExceeded,
+)
+from sparse_blobpool.protocol.constants import ALL_ONES
+from sparse_blobpool.protocol.messages import (
     Block,
-    BlockAnnouncement,
+    BlockBroadcast,
     BroadcastTransaction,
     Cells,
     GetCells,
@@ -24,10 +30,10 @@ from ..protocol.messages import (
 )
 
 if TYPE_CHECKING:
-    from ..config import SimulationConfig
-    from ..core.simulator import Simulator
-    from ..core.types import ActorId, RequestId, TxHash
-    from ..metrics.collector import MetricsCollector
+    from sparse_blobpool.config import SimulationConfig
+    from sparse_blobpool.core.simulator import Simulator
+    from sparse_blobpool.core.types import ActorId, RequestId, TxHash
+    from sparse_blobpool.metrics.collector import MetricsCollector
 
 
 class Role(Enum):
@@ -132,7 +138,7 @@ class Node(Actor):
                 self._handle_get_cells(msg)
             case Cells() as msg:
                 self._handle_cells(msg)
-            case BlockAnnouncement() as msg:
+            case BlockBroadcast() as msg:
                 self._handle_block_announcement(msg)
             case TimerPayload(kind=TimerKind.REQUEST_TIMEOUT, context=ctx):
                 self._handle_request_timeout(ctx)
@@ -323,7 +329,7 @@ class Node(Actor):
         self._schedule_request_timeout(request_id)
 
     def _handle_get_transactions(self, msg: GetPooledTransactions) -> None:
-        from ..protocol.messages import PooledTransactions, TxBody
+        from sparse_blobpool.protocol.messages import PooledTransactions, TxBody
 
         transactions: list[TxBody | None] = []
 
@@ -421,7 +427,7 @@ class Node(Actor):
         return extra_mask
 
     def _handle_get_cells(self, msg: GetCells) -> None:
-        from ..protocol.messages import Cell, Cells
+        from sparse_blobpool.protocol.messages import Cell, Cells
 
         cells_response: list[list[Cell | None]] = []
 
@@ -489,7 +495,7 @@ class Node(Actor):
 
         # Create pool entry (we don't have full tx metadata in this sim,
         # so we create a minimal entry)
-        from ..core.types import Address
+        from sparse_blobpool.core.types import Address
 
         entry = BlobTxEntry(
             tx_hash=tx_hash,
@@ -531,7 +537,7 @@ class Node(Actor):
             entry.announced_to.add(peer)
 
     def _allocate_request_id(self) -> RequestId:
-        from ..core.types import RequestId
+        from sparse_blobpool.core.types import RequestId
 
         request_id = RequestId(self._next_request_id)
         self._next_request_id += 1
@@ -552,7 +558,7 @@ class Node(Actor):
         )
 
     def _handle_request_timeout(self, context: dict[str, object]) -> None:
-        from ..core.types import RequestId
+        from sparse_blobpool.core.types import RequestId
 
         request_id = context.get("request_id")
         if not isinstance(request_id, int):
@@ -588,7 +594,7 @@ class Node(Actor):
         if not isinstance(tx_hash, str):
             return
 
-        from ..core.types import TxHash
+        from sparse_blobpool.core.types import TxHash
 
         tx_hash = TxHash(tx_hash)
         pending = self._pending_txs.get(tx_hash)
@@ -609,7 +615,7 @@ class Node(Actor):
             # No peers, drop the tx
             self._pending_txs.pop(tx_hash, None)
 
-    def _handle_block_announcement(self, msg: BlockAnnouncement) -> None:
+    def _handle_block_announcement(self, msg: BlockBroadcast) -> None:
         for tx_hash in msg.block.blob_tx_hashes:
             # Remove from pending if still there
             self._pending_txs.pop(tx_hash, None)
@@ -635,7 +641,7 @@ class Node(Actor):
         if not isinstance(tx_hash, str):
             return
 
-        from ..core.types import TxHash
+        from sparse_blobpool.core.types import TxHash
 
         tx_hash = TxHash(tx_hash)
         self._pool.remove(tx_hash)
@@ -652,7 +658,7 @@ class Node(Actor):
             blob_tx_hashes=[tx.tx_hash for tx in selected_txs],
         )
 
-        announcement = BlockAnnouncement(sender=self._id, block=block)
+        announcement = BlockBroadcast(sender=self._id, block=block)
 
         for peer in self._peers:
             self.send(announcement, peer)
