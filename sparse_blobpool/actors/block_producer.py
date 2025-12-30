@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sparse_blobpool.actors.honest import Node
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor, EventPayload, TimerKind, TimerPayload
 from sparse_blobpool.core.types import ActorId
@@ -53,7 +54,7 @@ class BlockProducer(Actor):
 
         self._advance_slot()
 
-    def _select_proposer(self, nodes: list) -> object:
+    def _select_proposer(self, nodes: list[Node]) -> Node:
         return nodes[self._current_slot % len(nodes)]
 
     def _advance_slot(self) -> None:

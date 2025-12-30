@@ -1,9 +1,12 @@
 """Local simulation events (not transmitted over network)."""
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sparse_blobpool.core.actor import Message
-from sparse_blobpool.core.types import Address, TxHash
+
+if TYPE_CHECKING:
+    from sparse_blobpool.core.types import Address, TxHash
 
 
 @dataclass
@@ -27,7 +30,7 @@ class BroadcastTransaction(Message):
 
     @property
     def size_bytes(self) -> int:
-        return 0  # Local event, not transmitted over network
+        return 0
 
 
 @dataclass
@@ -43,4 +46,4 @@ class ProduceBlock(Message):
 
     @property
     def size_bytes(self) -> int:
-        return 0  # Local event, not transmitted over network
+        return 0

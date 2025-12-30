@@ -15,7 +15,7 @@ This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key co
 
 ## Python version
 
-Use Python 3.13+. Leverage modern syntax:
+Use Python 3.14+. Leverage modern syntax:
 
 - `type` statements for type aliases
 - Built-in generics (`list[T]`, `dict[K, V]`—no `typing` imports)
