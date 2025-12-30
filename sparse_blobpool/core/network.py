@@ -28,32 +28,48 @@ class LatencyParams:
 class CoDelState:
     """Per-link CoDel queue state for congestion modeling.
 
-    CoDel (Controlled Delay) is an active queue management algorithm that
-    adds delays during congestion to model realistic network behavior.
+    This is a delay-only CoDel variant optimized for discrete event simulation.
+    Unlike RFC 8289 CoDel which drops packets, this implementation adds latency
+    proportional to congestion level. This design choice is intentional:
+
+    1. **Delay-only suffices for blob propagation analysis**: We care about
+       message arrival times, not packet loss rates. Adding delay captures
+       the performance impact of congestion without complicating the protocol
+       simulation with retransmission logic.
+
+    2. **Virtual queue avoids packet buffering**: Rather than maintaining actual
+       packet queues, we track a virtual byte counter that drains at the link's
+       drain rate. This is sufficient because the simulator schedules discrete
+       events—we only need to compute the delay at send time, not manage a
+       real queue.
+
+    3. **Per-link state models point-to-point congestion**: Each (sender, receiver)
+       pair maintains independent state. This captures link-level congestion
+       without the complexity of fair queuing across flows, which isn't needed
+       when simulating a small number of peers with distinct message patterns.
+
+    4. **Sqrt backoff preserves CoDel's key insight**: Under sustained congestion,
+       delay increases with sqrt(drop_count), preventing both queue explosion
+       and oscillation—the core benefit of CoDel's control law.
     """
 
-    # Virtual queue depth in bytes
     queue_bytes: float = 0.0
-    # Time when queue last became non-empty
     queue_start_time: float = 0.0
-    # Number of consecutive drops/delays (for sqrt backoff)
     drop_count: int = 0
-    # Time of last drop decision
     last_drop_time: float = 0.0
 
 
 @dataclass
 class CoDelConfig:
-    """Configuration for CoDel queue modeling."""
+    """Configuration for CoDel queue modeling.
 
-    # Target queue delay in seconds (CoDel default: 5ms)
-    target_delay: float = 0.005
-    # Interval for drop decisions in seconds (CoDel default: 100ms)
-    interval: float = 0.100
-    # Maximum queue size in bytes before tail drop
-    max_queue_bytes: int = 10 * 1024 * 1024  # 10 MB
-    # Queue drain rate (virtual) in bytes/sec
-    drain_rate: float = 100 * 1024 * 1024  # 100 MB/s
+    Defaults match RFC 8289 where applicable (target=5ms, interval=100ms).
+    """
+
+    target_delay: float = 0.005  # 5ms - sojourn time threshold for "good" queue
+    interval: float = 0.100  # 100ms - sustained bad queue triggers backoff
+    max_queue_bytes: int = 10 * 1024 * 1024  # 10 MB cap (tail drop)
+    drain_rate: float = 100 * 1024 * 1024  # 100 MB/s virtual drain
 
 
 # Default latency matrix (one-way delay)
@@ -178,7 +194,15 @@ class Network:
         return self._codel_state[link]
 
     def _codel_delay(self, from_: ActorId, to: ActorId, size_bytes: int) -> float:
-        """Simplified CoDel: tracks queue depth, drains over time, sqrt backoff."""
+        """Compute additional delay from virtual queue congestion.
+
+        Algorithm:
+        1. Drain queue bytes based on elapsed time since last message
+        2. Add new message bytes to queue (capped at max_queue_bytes)
+        3. Compute sojourn time = queue_bytes / drain_rate
+        4. If sojourn > target for sustained period, increment drop_count
+        5. Return sojourn scaled by sqrt(drop_count) to model CoDel backoff
+        """
         current_time = self._simulator.current_time
         config = self._codel_config
         state = self._get_codel_state(from_, to)
