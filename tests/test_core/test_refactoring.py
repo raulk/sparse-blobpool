@@ -1,20 +1,19 @@
-"""Tests for refactored topology and block production.
+"""Tests for refactored block production.
 
 These tests define the NEW behavior we want:
 1. Simulator.nodes derives Node actors from _actors (no separate _nodes list)
-2. TopologyResult provides region info via a lookup method (no nodes list)
-3. BlockProducer sends ProduceBlock message to selected node
-4. Node handles ProduceBlock - selects blobs, creates block, broadcasts
+2. BlockProducer sends ProduceBlock message to selected node
+3. Node handles ProduceBlock - selects blobs, creates block, broadcasts
 """
 
 import pytest
 
+from sparse_blobpool.actors.honest import Node
 from sparse_blobpool.config import Region, SimulationConfig
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, Address, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
-from sparse_blobpool.p2p.node import Node
 from sparse_blobpool.pool.blobpool import BlobTxEntry
 from sparse_blobpool.protocol.constants import ALL_ONES
 
@@ -131,40 +130,12 @@ class TestUnifiedNodes:
         assert nodes == []
 
 
-class TestTopologyRegionLookup:
-    """Tests for TopologyResult region lookup instead of nodes list."""
-
-    def test_topology_result_has_region_for_method(self) -> None:
-        """TopologyResult should have a region_for(actor_id) method."""
-        from sparse_blobpool.p2p.topology import TopologyResult
-
-        # Create topology with region info
-        topology = TopologyResult(
-            regions={ActorId("node-0"): Region.NA, ActorId("node-1"): Region.EU},
-            edges=[],
-        )
-
-        assert topology.region_for(ActorId("node-0")) == Region.NA
-        assert topology.region_for(ActorId("node-1")) == Region.EU
-
-    def test_topology_result_region_for_unknown_returns_none(self) -> None:
-        """TopologyResult.region_for should return None for unknown nodes."""
-        from sparse_blobpool.p2p.topology import TopologyResult
-
-        topology = TopologyResult(
-            regions={ActorId("node-0"): Region.NA},
-            edges=[],
-        )
-
-        assert topology.region_for(ActorId("unknown")) is None
-
-
 class TestProduceBlockMessage:
     """Tests for ProduceBlock message handling in Node."""
 
     def test_produce_block_message_exists(self) -> None:
         """ProduceBlock message type should exist."""
-        from sparse_blobpool.protocol.messages import ProduceBlock
+        from sparse_blobpool.protocol.commands import ProduceBlock
 
         msg = ProduceBlock(sender=ActorId("block-producer"), slot=1)
         assert msg.slot == 1
@@ -177,7 +148,7 @@ class TestProduceBlockMessage:
         config: SimulationConfig,
     ) -> None:
         """Node should handle ProduceBlock message and produce a block."""
-        from sparse_blobpool.protocol.messages import ProduceBlock
+        from sparse_blobpool.protocol.commands import ProduceBlock
 
         node = create_node(simulator, network, config, "node-1")
 
@@ -201,7 +172,7 @@ class TestProduceBlockMessage:
         config: SimulationConfig,
     ) -> None:
         """Node producing a block should broadcast to all peers."""
-        from sparse_blobpool.protocol.messages import ProduceBlock
+        from sparse_blobpool.protocol.commands import ProduceBlock
 
         node1 = create_node(simulator, network, config, "node-1")
         node2 = create_node(simulator, network, config, "node-2")

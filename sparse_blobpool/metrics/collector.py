@@ -15,9 +15,9 @@ from sparse_blobpool.metrics.results import (
 from sparse_blobpool.protocol.constants import ALL_ONES
 
 if TYPE_CHECKING:
+    from sparse_blobpool.actors.honest import Role
     from sparse_blobpool.core.simulator import Simulator
     from sparse_blobpool.core.types import ActorId, Region, TxHash
-    from sparse_blobpool.p2p.node import Role
 
 
 # Estimated size of a full blob transaction for bandwidth reduction calculations

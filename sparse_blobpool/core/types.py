@@ -13,6 +13,3 @@ Address = NewType("Address", str)
 
 # Request ID for matching request/response pairs
 RequestId = NewType("RequestId", int)
-
-# Network actor ID constant
-NETWORK_ACTOR_ID = ActorId("network")

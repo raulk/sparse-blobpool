@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Union
 
-from sparse_blobpool.core.types import NETWORK_ACTOR_ID, ActorId
-
 if TYPE_CHECKING:
     from sparse_blobpool.core.simulator import Simulator
+    from sparse_blobpool.core.types import ActorId
 
 
 class TimerKind(Enum):
@@ -23,9 +22,6 @@ class TimerKind(Enum):
     SLOT_TICK = auto()
     TX_CLEANUP = auto()
     REQUEST_TIMEOUT = auto()
-    # Adversary timers
-    SPAM_NEXT = auto()
-    INJECT_NEXT = auto()
 
 
 @dataclass
@@ -48,25 +44,16 @@ class Message:
         return 8  # Base overhead
 
 
-@dataclass
-class SendRequest:
-    """Request for Network actor to deliver a message."""
-
-    msg: Message
-    from_: ActorId
-    to: ActorId
-
-
 # Union of all event payload types
-EventPayload = Union[Message, TimerPayload, SendRequest]  # noqa: UP007 -- runtime needed for 3.11
+EventPayload = Union[Message, TimerPayload]  # noqa: UP007 -- runtime needed for 3.11
 
 
 class Actor(ABC):
     """Base class for all simulation actors.
 
     Actors are stateful entities with a single entrypoint (on_event) that the
-    Simulator invokes. Actors communicate via messages; the Network actor
-    models transport delays.
+    Simulator invokes. Actors communicate via messages delivered through the
+    Network component.
     """
 
     def __init__(self, actor_id: ActorId, simulator: Simulator) -> None:
@@ -87,17 +74,8 @@ class Actor(ABC):
         ...
 
     def send(self, msg: Message, to: ActorId) -> None:
-        """Request message delivery via Network actor."""
-        from sparse_blobpool.core.simulator import Event
-
-        self._simulator.schedule(
-            Event(
-                timestamp=self._simulator.current_time,
-                priority=0,
-                target_id=NETWORK_ACTOR_ID,
-                payload=SendRequest(msg=msg, from_=self._id, to=to),
-            )
-        )
+        """Send a message to another actor via the network."""
+        self._simulator.network.deliver(msg, self._id, to)
 
     def schedule_timer(
         self, delay: float, kind: TimerKind, context: dict[str, Any] | None = None

@@ -10,7 +10,7 @@ from sparse_blobpool.config import Region
 from sparse_blobpool.core.simulator import Event
 
 if TYPE_CHECKING:
-    from sparse_blobpool.core.actor import Message, SendRequest
+    from sparse_blobpool.core.actor import Message
     from sparse_blobpool.core.simulator import Simulator
     from sparse_blobpool.core.types import ActorId
     from sparse_blobpool.metrics.collector import MetricsCollector
@@ -75,8 +75,7 @@ LATENCY_DEFAULTS: dict[tuple[Region, Region], LatencyParams] = {
 class Network:
     """Network component that handles message delivery with realistic latency.
 
-    The Network receives SendRequest calls from the Simulator and schedules
-    delayed Message delivery to the target actor. Delay is calculated based on:
+    Actors call network.deliver() to send messages. Delay is calculated based on:
     - Base latency between regions
     - Random jitter
     - Transmission time based on message size and bandwidth limits
@@ -117,10 +116,8 @@ class Network:
         self._actor_regions[actor_id] = region
         self._actor_bandwidth[actor_id] = bandwidth or self._default_bandwidth
 
-    def handle_send_request(self, request: SendRequest) -> None:
-        self._deliver(request.msg, request.from_, request.to)
-
-    def _deliver(self, msg: Message, from_: ActorId, to: ActorId) -> None:
+    def deliver(self, msg: Message, from_: ActorId, to: ActorId) -> None:
+        """Schedule message delivery with calculated delay."""
         delay = self._calculate_delay(from_, to, msg.size_bytes)
 
         self._simulator.schedule(
@@ -140,7 +137,6 @@ class Network:
         self._metrics.record_bandwidth(from_, to, msg.size_bytes, is_control)
 
     def _is_control_message(self, msg: Message) -> bool:
-        # Import here to avoid circular dependencies
         from sparse_blobpool.protocol.messages import Cells, GetCells, PooledTransactions
 
         # Data messages: actual cell/blob content

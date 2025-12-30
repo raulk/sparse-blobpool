@@ -14,20 +14,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class BlobTxEntry:
-    """A blob transaction entry in the pool.
-
-    Stores transaction metadata and cell availability without holding
-    actual blob data. Cell data is requested on-demand from peers.
-    """
-
     tx_hash: TxHash
     sender: Address
     nonce: int
-    gas_fee_cap: int  # maxFeePerGas in wei
-    gas_tip_cap: int  # maxPriorityFeePerGas in wei
-    blob_gas_price: int  # maxFeePerBlobGas in wei
-    tx_size: int  # envelope size without blob data
-    blob_count: int  # number of blobs (1-6)
+    gas_fee_cap: int
+    gas_tip_cap: int
+    blob_gas_price: int
+    tx_size: int
+    blob_count: int
     cell_mask: int = ALL_ONES  # uint128 bitmap of available columns
     received_at: float = 0.0  # simulation timestamp when received
     announced_to: set[ActorId] = field(default_factory=set)
@@ -215,10 +209,6 @@ class Blobpool:
         self._total_size = 0
 
     def _can_replace(self, existing: BlobTxEntry, replacement: BlobTxEntry) -> bool:
-        """Check if replacement meets RBF fee bump requirements.
-
-        Both gas_fee_cap and gas_tip_cap must be bumped by at least RBF_BUMP_PERCENT.
-        """
         min_fee_cap = existing.gas_fee_cap * (100 + self.RBF_BUMP_PERCENT) // 100
         min_tip_cap = existing.gas_tip_cap * (100 + self.RBF_BUMP_PERCENT) // 100
 

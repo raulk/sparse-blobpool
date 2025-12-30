@@ -2,12 +2,12 @@
 
 import pytest
 
+from sparse_blobpool.actors.honest import Node, Role, TxState
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
-from sparse_blobpool.p2p.node import Node, Role, TxState
 from sparse_blobpool.protocol.constants import ALL_ONES
 from sparse_blobpool.protocol.messages import (
     Cells,
@@ -386,7 +386,7 @@ class TestResponseHandling:
         tx_hash = TxHash("0x" + "ab" * 32)
 
         # Create pending tx manually
-        from sparse_blobpool.p2p.node import PendingTx
+        from sparse_blobpool.actors.honest import PendingTx
 
         pending = PendingTx(
             tx_hash=tx_hash,
@@ -416,7 +416,7 @@ class TestResponseHandling:
 
         tx_hash = TxHash("0x" + "ab" * 32)
 
-        from sparse_blobpool.p2p.node import PendingTx
+        from sparse_blobpool.actors.honest import PendingTx
         from sparse_blobpool.protocol.messages import Cell
 
         pending = PendingTx(
@@ -451,7 +451,7 @@ class TestResponseHandling:
 
         tx_hash = TxHash("0x" + "ab" * 32)
 
-        from sparse_blobpool.p2p.node import PendingTx
+        from sparse_blobpool.actors.honest import PendingTx
 
         pending = PendingTx(
             tx_hash=tx_hash,
