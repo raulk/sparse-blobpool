@@ -13,10 +13,14 @@ class Region(Enum):
 
 
 class TopologyStrategy(Enum):
-    """Network topology generation strategies."""
-
     RANDOM_GRAPH = auto()
     GEOGRAPHIC_KADEMLIA = auto()
+
+
+class InclusionPolicy(Enum):
+    CONSERVATIVE = auto()  # Only include if full blob held locally
+    OPTIMISTIC = auto()  # Include if available (any cells)
+    PROACTIVE = auto()  # Would trigger resampling first (not implemented)
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,11 @@ class SimulationConfig:
     # Resource limits
     blobpool_max_bytes: int = 2 * 1024**3  # 2GB
     max_txs_per_sender: int = 16
+
+    # Block production
+    slot_duration: float = 12.0  # seconds per slot
+    max_blobs_per_block: int = 6
+    inclusion_policy: InclusionPolicy = InclusionPolicy.CONSERVATIVE
 
     # Simulation parameters
     seed: int = 42

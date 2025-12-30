@@ -1,6 +1,6 @@
 """P2P network topology and node implementation."""
 
-from .node import Node, PendingRequest, PendingTx, Role, TxState
+from ..actors import Node, PendingRequest, PendingTx, Role, TxState
 from .topology import NodeInfo, TopologyResult, build_topology
 
 __all__ = [

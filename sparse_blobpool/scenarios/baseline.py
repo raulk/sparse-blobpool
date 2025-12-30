@@ -2,7 +2,7 @@
 
 This module provides the `build_simulator()` factory for creating a fully
 configured simulator with:
-- Network actor for message delivery
+- Network component for message delivery
 - Node actors with P2P connections
 - BlockProducer for slot-based block production
 """
@@ -10,7 +10,7 @@ configured simulator with:
 from __future__ import annotations
 
 from ..config import SimulationConfig
-from ..core.block_producer import BlockProducer, SlotConfig
+from ..core.block_producer import BlockProducer
 from ..core.network import Network
 from ..core.simulator import Event, Simulator
 from ..core.types import Address, TxHash
@@ -24,7 +24,7 @@ from ..protocol.messages import BroadcastTransaction
 def build_simulator(config: SimulationConfig | None = None) -> Simulator:
     """Build a fully configured simulator.
 
-    Creates all actors (Network, Nodes, BlockProducer), establishes peer
+    Creates all components (Network, Nodes, BlockProducer), establishes peer
     connections based on the configured topology strategy, and registers
     everything with the simulator.
 
@@ -43,13 +43,12 @@ def build_simulator(config: SimulationConfig | None = None) -> Simulator:
     # Create metrics collector
     metrics = MetricsCollector(simulator=simulator)
 
-    # Create and register Network actor
+    # Create Network component (not an actor - set on simulator later)
     network = Network(
         simulator=simulator,
         default_bandwidth=config.default_bandwidth,
         metrics=metrics,
     )
-    simulator.register_actor(network)
 
     # Build topology
     topology = build_topology(config, simulator.rng)
@@ -84,10 +83,7 @@ def build_simulator(config: SimulationConfig | None = None) -> Simulator:
             node_b.add_peer(node_a_id)
 
     # Create and register BlockProducer
-    block_producer = BlockProducer(
-        simulator=simulator,
-        slot_config=SlotConfig(slot_duration=12.0, max_blobs_per_block=6),
-    )
+    block_producer = BlockProducer(simulator=simulator, config=config)
     simulator.register_actor(block_producer)
 
     # Register all nodes with BlockProducer for proposer selection

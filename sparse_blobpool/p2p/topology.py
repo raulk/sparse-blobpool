@@ -31,7 +31,6 @@ class TopologyResult:
     edges: list[tuple[ActorId, ActorId]]
 
     def peers_of(self, node_id: ActorId) -> list[ActorId]:
-        """Get the peers of a node."""
         peers = []
         for a, b in self.edges:
             if a == node_id:
@@ -42,15 +41,6 @@ class TopologyResult:
 
 
 def build_topology(config: SimulationConfig, rng: Random) -> TopologyResult:
-    """Build a network topology based on configuration.
-
-    Args:
-        config: Simulation configuration with topology strategy and parameters.
-        rng: Random number generator for reproducibility.
-
-    Returns:
-        TopologyResult with nodes and their connections.
-    """
     from ..config import TopologyStrategy
 
     # Generate node IDs and assign regions
@@ -67,7 +57,6 @@ def build_topology(config: SimulationConfig, rng: Random) -> TopologyResult:
 
 
 def _generate_nodes(config: SimulationConfig, rng: Random) -> list[NodeInfo]:
-    """Generate node IDs and assign regions based on distribution."""
     from ..config import Region
     from ..core.types import ActorId
 
@@ -106,11 +95,7 @@ def _build_random_graph(
     mesh_degree: int,
     rng: Random,
 ) -> list[tuple[ActorId, ActorId]]:
-    """Build a random graph with approximately mesh_degree edges per node.
-
-    Uses networkx random_regular_graph if possible, otherwise falls back
-    to a random connection approach.
-    """
+    """Uses networkx random_regular_graph if possible, falls back to random connections."""
     n = len(nodes)
 
     # For random regular graph, n*d must be even
@@ -144,16 +129,11 @@ def _build_geographic_kademlia(
     mesh_degree: int,
     rng: Random,
 ) -> list[tuple[ActorId, ActorId]]:
-    """Build a Kademlia-like topology with geographic affinity.
+    """Kademlia-like topology preferring same-region connections.
 
-    Nodes prefer connections to nodes in the same region, while maintaining
-    some cross-region connections for global connectivity.
-
-    The algorithm:
-    1. Assign each node a Kademlia-style ID (hash of actor_id)
-    2. Each node connects to log2(n) nodes in different distance buckets
-    3. Prefer same-region peers when multiple candidates exist
-    4. Fill remaining slots with random same-region peers
+    Each node connects to log2(n) nodes in different distance buckets,
+    preferring same-region peers. Remaining slots filled with random
+    same-region peers for global connectivity.
     """
     n = len(nodes)
     if n == 0:
@@ -245,6 +225,5 @@ def _build_geographic_kademlia(
 
 
 def _kademlia_id(actor_id: ActorId) -> int:
-    """Compute a Kademlia-style 256-bit ID from actor ID."""
     hash_bytes = sha256(actor_id.encode()).digest()
     return int.from_bytes(hash_bytes, "big")

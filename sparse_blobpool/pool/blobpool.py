@@ -34,26 +34,21 @@ class BlobTxEntry:
 
     @property
     def effective_tip(self) -> int:
-        """Effective priority fee for ordering."""
         return self.gas_tip_cap
 
     @property
     def total_blob_cells(self) -> int:
-        """Total number of cells across all blobs."""
         return self.blob_count * CELLS_PER_BLOB
 
     @property
     def total_blob_size(self) -> int:
-        """Total size of blob cell data in bytes."""
         return self.total_blob_cells * CELL_SIZE
 
     @property
     def has_full_availability(self) -> bool:
-        """True if all columns are available."""
         return self.cell_mask == ALL_ONES
 
     def available_column_count(self) -> int:
-        """Count of available columns (bits set in cell_mask)."""
         return bin(self.cell_mask).count("1")
 
 
@@ -116,29 +111,23 @@ class Blobpool:
 
     @property
     def size_bytes(self) -> int:
-        """Current total size of transactions in pool."""
         return self._total_size
 
     @property
     def tx_count(self) -> int:
-        """Number of transactions in pool."""
         return len(self._txs)
 
     def get(self, tx_hash: TxHash) -> BlobTxEntry | None:
-        """Get transaction by hash."""
         return self._txs.get(tx_hash)
 
     def contains(self, tx_hash: TxHash) -> bool:
-        """Check if transaction exists in pool."""
         return tx_hash in self._txs
 
     def get_by_sender(self, sender: Address) -> list[BlobTxEntry]:
-        """Get all transactions from a sender, ordered by nonce."""
         nonce_map = self._by_sender.get(sender, {})
         return [self._txs[h] for h in nonce_map.values()]
 
     def sender_tx_count(self, sender: Address) -> int:
-        """Number of transactions from a sender."""
         return len(self._by_sender.get(sender, {}))
 
     def add(self, entry: BlobTxEntry) -> AddResult:
@@ -192,20 +181,14 @@ class Blobpool:
         return result
 
     def remove(self, tx_hash: TxHash) -> BlobTxEntry | None:
-        """Remove a transaction from the pool. Returns the removed entry."""
         if tx_hash not in self._txs:
             return None
         return self._remove_internal(tx_hash)
 
     def remove_batch(self, tx_hashes: list[TxHash]) -> list[BlobTxEntry]:
-        """Remove multiple transactions. Returns list of removed entries."""
         return [e for h in tx_hashes if (e := self.remove(h)) is not None]
 
     def update_cell_mask(self, tx_hash: TxHash, new_mask: int) -> bool:
-        """Update the cell availability mask for a transaction.
-
-        Typically used to OR in newly received cells.
-        """
         entry = self._txs.get(tx_hash)
         if entry is None:
             return False
@@ -213,7 +196,6 @@ class Blobpool:
         return True
 
     def merge_cells(self, tx_hash: TxHash, received_mask: int) -> int | None:
-        """Merge received cells into existing availability. Returns new mask."""
         entry = self._txs.get(tx_hash)
         if entry is None:
             return None
@@ -221,16 +203,13 @@ class Blobpool:
         return entry.cell_mask
 
     def iter_by_priority(self) -> list[BlobTxEntry]:
-        """Return transactions ordered by priority (highest effective tip first)."""
         return sorted(self._txs.values(), key=lambda e: e.effective_tip, reverse=True)
 
     def iter_expired(self, current_time: float, ttl: float) -> list[BlobTxEntry]:
-        """Return transactions that have expired based on TTL."""
         cutoff = current_time - ttl
         return [e for e in self._txs.values() if e.received_at < cutoff]
 
     def clear(self) -> None:
-        """Remove all transactions from the pool."""
         self._txs.clear()
         self._by_sender.clear()
         self._total_size = 0

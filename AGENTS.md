@@ -7,9 +7,9 @@ Guidelines for AI agents working on the sparse blobpool simulator.
 This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key components:
 
 - `sparse_blobpool/core/` - Simulator engine, Actor base, Network with CoDel
-- `sparse_blobpool/p2p/` - Node actor, topology generation
+- `sparse_blobpool/actors/` - Actor implementations (Node in `honest.py`, BlockProducer, adversaries)
+- `sparse_blobpool/p2p/` - Topology generation
 - `sparse_blobpool/protocol/` - eth/71 messages, blobpool state
-- `sparse_blobpool/adversaries/` - Attack implementations
 - `sparse_blobpool/scenarios/` - Runnable simulation scenarios
 - `tests/` - 210+ tests with hypothesis property-based testing
 
@@ -62,7 +62,7 @@ Use `ruff` for both formatting and linting. Run:
 
 ## Imports
 
-- Use relative imports within the package (`from .utils import helper`)
+- Use relative imports within the package (`from .utils import helper`, `from ..core import Simulator`)
 - Use absolute imports for external dependencies
 - Ordering (enforced by ruff):
   1. Standard library

@@ -65,7 +65,6 @@ class SimulationResults:
     bytes_received_per_node: dict[ActorId, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
-        """Convert to dictionary for JSON serialization."""
         return {
             "total_bandwidth_bytes": self.total_bandwidth_bytes,
             "bandwidth_per_blob": self.bandwidth_per_blob,

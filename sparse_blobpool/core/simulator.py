@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 from random import Random
 from typing import TYPE_CHECKING, TypeVar
 
+from .actor import SendRequest
+from .types import NETWORK_ACTOR_ID
+
 if TYPE_CHECKING:
     from ..metrics.collector import MetricsCollector
     from ..metrics.results import SimulationResults
@@ -67,11 +70,6 @@ class Simulator:
         return self._actors
 
     def actors_by_type(self, actor_type: type[ActorT]) -> list[ActorT]:
-        """Return all actors of a specific type.
-
-        Uses generic type parameter to provide proper type hints for the
-        returned list.
-        """
         return [actor for actor in self._actors.values() if isinstance(actor, actor_type)]
 
     @property
@@ -109,17 +107,14 @@ class Simulator:
         return self._metrics
 
     def finalize_metrics(self) -> SimulationResults:
-        """Finalize and return simulation metrics."""
         return self.metrics.finalize()
 
     def register_actor(self, actor: Actor) -> None:
-        """Register an actor with the simulator."""
         if actor.id in self._actors:
             raise ValueError(f"Actor {actor.id} already registered")
         self._actors[actor.id] = actor
 
     def schedule(self, event: Event) -> None:
-        """Schedule an event for future processing."""
         if event.timestamp < self._current_time:
             raise ValueError(
                 f"Cannot schedule event in the past: {event.timestamp} < {self._current_time}"
@@ -127,11 +122,7 @@ class Simulator:
         heapq.heappush(self._event_queue, event)
 
     def run(self, until: float) -> None:
-        """Run the simulation until the specified time.
-
-        Processes events in timestamp order, advancing simulation time
-        as each event is processed.
-        """
+        """Processes events in timestamp order up to the specified time."""
         while self._event_queue and self._current_time < until:
             event = heapq.heappop(self._event_queue)
 
@@ -142,27 +133,28 @@ class Simulator:
                 break
 
             self._current_time = event.timestamp
-
-            if event.target_id not in self._actors:
-                raise RuntimeError(f"Event targeted unknown actor: {event.target_id}")
-
-            actor = self._actors[event.target_id]
-            actor.on_event(event.payload)
+            self._dispatch_event(event)
             self._events_processed += 1
 
     def run_until_empty(self) -> None:
-        """Run the simulation until the event queue is empty."""
         while self._event_queue:
             event = heapq.heappop(self._event_queue)
             self._current_time = event.timestamp
-
-            if event.target_id not in self._actors:
-                raise RuntimeError(f"Event targeted unknown actor: {event.target_id}")
-
-            actor = self._actors[event.target_id]
-            actor.on_event(event.payload)
+            self._dispatch_event(event)
             self._events_processed += 1
 
+    def _dispatch_event(self, event: Event) -> None:
+        if event.target_id == NETWORK_ACTOR_ID:
+            if self._network is None:
+                raise RuntimeError("Network not configured")
+            if not isinstance(event.payload, SendRequest):
+                raise RuntimeError(f"Network received non-SendRequest: {type(event.payload)}")
+            self._network.handle_send_request(event.payload)
+        else:
+            if event.target_id not in self._actors:
+                raise RuntimeError(f"Event targeted unknown actor: {event.target_id}")
+            actor = self._actors[event.target_id]
+            actor.on_event(event.payload)
+
     def pending_event_count(self) -> int:
-        """Return the number of pending events in the queue."""
         return len(self._event_queue)
