@@ -320,24 +320,24 @@ uv run python -m scenarios.baseline
 
 ### 7.1 CoDel queue modeling
 
-- [ ] Implement CoDel delay calculation
-- [ ] Track per-link queue state
+- [x] Implement CoDel delay calculation
+- [x] Track per-link queue state
 
 ---
 
 ### 7.2 Comprehensive test suite
 
-- [ ] Unit tests for all modules
-- [ ] Integration tests for scenarios
-- [ ] Property-based tests for role distribution
+- [x] Unit tests for all modules
+- [x] Integration tests for scenarios
+- [x] Property-based tests for role distribution
 
 ---
 
 ### 7.3 Documentation
 
-- [ ] README with usage examples
-- [ ] API documentation
-- [ ] Results interpretation guide
+- [x] README with usage examples
+- [ ] API documentation (optional)
+- [ ] Results interpretation guide (optional)
 
 ---
 
