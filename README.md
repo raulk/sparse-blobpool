@@ -13,6 +13,11 @@ This simulator models the sparse blobpool protocol where nodes probabilistically
 - Attack scenarios (spam, withholding, targeted poisoning)
 - Comprehensive metrics collection
 
+## Requirements
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) package manager
+
 ## Installation
 
 ```bash
@@ -20,8 +25,11 @@ This simulator models the sparse blobpool protocol where nodes probabilistically
 git clone https://github.com/raulk/sparse-blobpool-sim.git
 cd sparse-blobpool-sim
 
-# Install with uv
+# Install dependencies
 uv sync
+
+# Install package in development mode
+uv pip install -e .
 ```
 
 ## Quick Start

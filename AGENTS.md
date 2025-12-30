@@ -1,6 +1,17 @@
 # AGENTS.md
 
-Guidelines for AI agents working on Python code in this repository.
+Guidelines for AI agents working on the sparse blobpool simulator.
+
+## Project overview
+
+This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key components:
+
+- `src/sparse_blobpool/core/` - Simulator engine, Actor base, Network with CoDel
+- `src/sparse_blobpool/p2p/` - Node actor, topology generation
+- `src/sparse_blobpool/protocol/` - eth/71 messages, blobpool state
+- `src/sparse_blobpool/adversaries/` - Attack implementations
+- `src/sparse_blobpool/scenarios/` - Runnable simulation scenarios
+- `tests/` - 210+ tests with hypothesis property-based testing
 
 ## Python version
 
@@ -112,12 +123,13 @@ When you do write docstrings:
 
 ## Testing
 
-Use `pytest`. Structure:
+Use `pytest` with `hypothesis` for property-based testing. Structure:
 
 - Tests live in `tests/`, mirroring src structure
 - Test files prefixed with `test_`
 - Shared fixtures in `conftest.py`
-- Run: `uv run pytest`
+- Property-based tests in `test_role_distribution.py`
+- Run: `uv run pytest` (210+ tests)
 
 Before proposing changes, run the test suite and ensure it passes.
 
