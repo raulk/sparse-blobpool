@@ -7,10 +7,12 @@ from enum import Enum, auto
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
+from ..config import InclusionPolicy
 from ..core.actor import Actor, EventPayload, Message, TimerKind, TimerPayload
 from ..pool.blobpool import Blobpool, BlobTxEntry, PoolFull, RBFRejected, SenderLimitExceeded
 from ..protocol.constants import ALL_ONES
 from ..protocol.messages import (
+    Block,
     BlockAnnouncement,
     BroadcastTransaction,
     Cells,
@@ -18,6 +20,7 @@ from ..protocol.messages import (
     GetPooledTransactions,
     NewPooledTransactionHashes,
     PooledTransactions,
+    ProduceBlock,
 )
 
 if TYPE_CHECKING:
@@ -117,6 +120,8 @@ class Node(Actor):
         match payload:
             case BroadcastTransaction() as msg:
                 self._handle_broadcast_transaction(msg)
+            case ProduceBlock() as msg:
+                self._handle_produce_block(msg)
             case NewPooledTransactionHashes() as msg:
                 self._handle_announcement(msg)
             case GetPooledTransactions() as msg:
@@ -634,3 +639,44 @@ class Node(Actor):
 
         tx_hash = TxHash(tx_hash)
         self._pool.remove(tx_hash)
+
+    def _handle_produce_block(self, msg: ProduceBlock) -> None:
+        selected_txs = self._select_blobs_for_block()
+
+        if not selected_txs:
+            return
+
+        block = Block(
+            slot=msg.slot,
+            proposer=self._id,
+            blob_tx_hashes=[tx.tx_hash for tx in selected_txs],
+        )
+
+        announcement = BlockAnnouncement(sender=self._id, block=block)
+
+        for peer in self._peers:
+            self.send(announcement, peer)
+
+        self._handle_block_announcement(announcement)
+
+    def _select_blobs_for_block(self) -> list[BlobTxEntry]:
+        candidates = [tx for tx in self._pool.iter_by_priority() if self._is_includable(tx)]
+
+        selected: list[BlobTxEntry] = []
+        blob_count = 0
+
+        for tx in candidates:
+            if blob_count + tx.blob_count <= self._config.max_blobs_per_block:
+                selected.append(tx)
+                blob_count += tx.blob_count
+
+        return selected
+
+    def _is_includable(self, tx: BlobTxEntry) -> bool:
+        match self._config.inclusion_policy:
+            case InclusionPolicy.CONSERVATIVE:
+                return tx.has_full_availability
+            case InclusionPolicy.OPTIMISTIC:
+                return tx.available_column_count() > 0
+            case InclusionPolicy.PROACTIVE:
+                return tx.has_full_availability

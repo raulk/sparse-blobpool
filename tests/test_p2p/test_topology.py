@@ -21,16 +21,16 @@ class TestTopologyResult:
     def test_peers_of_returns_connected_nodes(self) -> None:
         from sparse_blobpool.core.types import ActorId
 
-        nodes = [
-            NodeInfo(ActorId("node-0"), Region.NA),
-            NodeInfo(ActorId("node-1"), Region.NA),
-            NodeInfo(ActorId("node-2"), Region.NA),
-        ]
+        regions = {
+            ActorId("node-0"): Region.NA,
+            ActorId("node-1"): Region.NA,
+            ActorId("node-2"): Region.NA,
+        }
         edges = [
             (ActorId("node-0"), ActorId("node-1")),
             (ActorId("node-0"), ActorId("node-2")),
         ]
-        result = TopologyResult(nodes=nodes, edges=edges)
+        result = TopologyResult(regions=regions, edges=edges)
 
         peers = result.peers_of(ActorId("node-0"))
         assert set(peers) == {ActorId("node-1"), ActorId("node-2")}
@@ -38,16 +38,52 @@ class TestTopologyResult:
     def test_peers_of_handles_bidirectional(self) -> None:
         from sparse_blobpool.core.types import ActorId
 
-        nodes = [
-            NodeInfo(ActorId("node-0"), Region.NA),
-            NodeInfo(ActorId("node-1"), Region.NA),
-        ]
+        regions = {
+            ActorId("node-0"): Region.NA,
+            ActorId("node-1"): Region.NA,
+        }
         edges = [(ActorId("node-0"), ActorId("node-1"))]
-        result = TopologyResult(nodes=nodes, edges=edges)
+        result = TopologyResult(regions=regions, edges=edges)
 
         # Both directions should work
         assert ActorId("node-1") in result.peers_of(ActorId("node-0"))
         assert ActorId("node-0") in result.peers_of(ActorId("node-1"))
+
+    def test_nodes_property_returns_node_info_list(self) -> None:
+        """The nodes property provides backward compatibility."""
+        from sparse_blobpool.core.types import ActorId
+
+        regions = {
+            ActorId("node-0"): Region.NA,
+            ActorId("node-1"): Region.EU,
+        }
+        result = TopologyResult(regions=regions, edges=[])
+
+        nodes = result.nodes
+        assert len(nodes) == 2
+        assert all(isinstance(n, NodeInfo) for n in nodes)
+
+    def test_region_for_returns_region(self) -> None:
+        """region_for returns the region for a known node."""
+        from sparse_blobpool.core.types import ActorId
+
+        regions = {
+            ActorId("node-0"): Region.NA,
+            ActorId("node-1"): Region.EU,
+        }
+        result = TopologyResult(regions=regions, edges=[])
+
+        assert result.region_for(ActorId("node-0")) == Region.NA
+        assert result.region_for(ActorId("node-1")) == Region.EU
+
+    def test_region_for_returns_none_for_unknown(self) -> None:
+        """region_for returns None for unknown nodes."""
+        from sparse_blobpool.core.types import ActorId
+
+        regions = {ActorId("node-0"): Region.NA}
+        result = TopologyResult(regions=regions, edges=[])
+
+        assert result.region_for(ActorId("unknown")) is None
 
 
 class TestBuildTopology:

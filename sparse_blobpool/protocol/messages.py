@@ -164,3 +164,19 @@ class BroadcastTransaction(Message):
     @property
     def size_bytes(self) -> int:
         return 0  # Local event, not transmitted over network
+
+
+@dataclass
+class ProduceBlock(Message):
+    """Request a node to produce a block for a given slot.
+
+    Sent by BlockProducer to the selected proposer node. The node will
+    select transactions from its pool, create the block, and broadcast
+    the BlockAnnouncement to all peers.
+    """
+
+    slot: int
+
+    @property
+    def size_bytes(self) -> int:
+        return 0  # Local event, not transmitted over network

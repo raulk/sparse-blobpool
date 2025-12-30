@@ -82,15 +82,9 @@ def build_simulator(config: SimulationConfig | None = None) -> Simulator:
             node_a.add_peer(node_b_id)
             node_b.add_peer(node_a_id)
 
-    # Create and register BlockProducer
     block_producer = BlockProducer(simulator=simulator, config=config)
     simulator.register_actor(block_producer)
 
-    # Register all nodes with BlockProducer for proposer selection
-    block_producer.register_nodes([node.id for node in nodes])
-
-    # Set scenario-level state on simulator
-    simulator._nodes = nodes
     simulator._network = network
     simulator._block_producer = block_producer
     simulator._topology = topology
