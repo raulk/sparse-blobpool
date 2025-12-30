@@ -6,6 +6,7 @@ from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, TxHash
+from sparse_blobpool.metrics.collector import MetricsCollector
 from sparse_blobpool.p2p.node import Node, Role, TxState
 from sparse_blobpool.protocol.constants import ALL_ONES
 from sparse_blobpool.protocol.messages import (
@@ -38,26 +39,42 @@ def simulator() -> Simulator:
 
 
 @pytest.fixture
-def network(simulator: Simulator) -> Network:
+def metrics(simulator: Simulator) -> MetricsCollector:
+    """Create a metrics collector."""
+    return MetricsCollector(simulator=simulator)
+
+
+@pytest.fixture
+def network(simulator: Simulator, metrics: MetricsCollector) -> Network:
     """Create and register network actor."""
-    net = Network(simulator)
+    net = Network(simulator, metrics)
     simulator.register_actor(net)
     return net
 
 
 @pytest.fixture
-def node(simulator: Simulator, network: Network, config: SimulationConfig) -> Node:
+def node(
+    simulator: Simulator, network: Network, config: SimulationConfig, metrics: MetricsCollector
+) -> Node:
     """Create a test node."""
-    n = Node(ActorId("node-1"), simulator, config, custody_columns=8)
+    n = Node(ActorId("node-1"), simulator, config, custody_columns=8, metrics=metrics)
     simulator.register_actor(n)
     network.register_node(n.id, region=None)
     return n
 
 
+def make_node(
+    actor_id: ActorId, simulator: Simulator, config: SimulationConfig, custody_columns: int = 8
+) -> Node:
+    """Create a node with default metrics."""
+    metrics = MetricsCollector(simulator=simulator)
+    return Node(actor_id, simulator, config, custody_columns, metrics)
+
+
 class TestRoleDetermination:
     def test_role_is_deterministic(self, simulator: Simulator, config: SimulationConfig) -> None:
         """Same node + tx_hash always produces same role."""
-        node = Node(ActorId("test-node"), simulator, config, custody_columns=8)
+        node = make_node(ActorId("test-node"), simulator, config)
 
         tx_hash = TxHash("0x" + "ab" * 32)
         role1 = node._determine_role(tx_hash)
@@ -69,7 +86,7 @@ class TestRoleDetermination:
         self, simulator: Simulator, config: SimulationConfig
     ) -> None:
         """Role distribution should approximate provider_probability over many txs."""
-        node = Node(ActorId("test-node"), simulator, config, custody_columns=8)
+        node = make_node(ActorId("test-node"), simulator, config)
 
         provider_count = 0
         total = 1000
@@ -87,8 +104,8 @@ class TestRoleDetermination:
         self, simulator: Simulator, config: SimulationConfig
     ) -> None:
         """Different nodes should get different role assignments for same tx."""
-        node1 = Node(ActorId("node-1"), simulator, config, custody_columns=8)
-        node2 = Node(ActorId("node-2"), simulator, config, custody_columns=8)
+        node1 = make_node(ActorId("node-1"), simulator, config)
+        node2 = make_node(ActorId("node-2"), simulator, config)
 
         # Test with enough txs to find at least one difference
         different_found = False
@@ -106,7 +123,7 @@ class TestCustodyMask:
         self, simulator: Simulator, config: SimulationConfig
     ) -> None:
         """Custody mask should have exactly custody_columns bits set."""
-        node = Node(ActorId("test-node"), simulator, config, custody_columns=8)
+        node = make_node(ActorId("test-node"), simulator, config)
 
         bit_count = bin(node._custody_mask).count("1")
         assert bit_count == 8
@@ -115,8 +132,10 @@ class TestCustodyMask:
         self, simulator: Simulator, config: SimulationConfig
     ) -> None:
         """Same node ID should produce same custody mask."""
-        node1 = Node(ActorId("test-node"), Simulator(seed=1), config, custody_columns=8)
-        node2 = Node(ActorId("test-node"), Simulator(seed=2), config, custody_columns=8)
+        sim1 = Simulator(seed=1)
+        sim2 = Simulator(seed=2)
+        node1 = make_node(ActorId("test-node"), sim1, config)
+        node2 = make_node(ActorId("test-node"), sim2, config)
 
         # Note: custody mask uses node ID hash, not simulator RNG
         assert node1._custody_mask == node2._custody_mask
@@ -125,8 +144,8 @@ class TestCustodyMask:
         self, simulator: Simulator, config: SimulationConfig
     ) -> None:
         """Different nodes should have different custody assignments."""
-        node1 = Node(ActorId("node-1"), simulator, config, custody_columns=8)
-        node2 = Node(ActorId("node-2"), simulator, config, custody_columns=8)
+        node1 = make_node(ActorId("node-1"), simulator, config)
+        node2 = make_node(ActorId("node-2"), simulator, config)
 
         assert node1._custody_mask != node2._custody_mask
 
@@ -244,12 +263,16 @@ class TestAnnouncementHandling:
 
 class TestProviderFlow:
     def test_provider_requests_full_blob(
-        self, simulator: Simulator, network: Network, config: SimulationConfig
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
     ) -> None:
         """Provider role should request all cells."""
         # Create a node that will be provider for our test tx
         # We need to find a tx_hash that makes this node a provider
-        node = Node(ActorId("provider-node"), simulator, config, custody_columns=8)
+        node = Node(ActorId("provider-node"), simulator, config, custody_columns=8, metrics=metrics)
         simulator.register_actor(node)
         network.register_node(node.id, region=None)
 
@@ -300,10 +323,14 @@ class TestProviderFlow:
 
 class TestSamplerFlow:
     def test_sampler_waits_for_providers(
-        self, simulator: Simulator, network: Network, config: SimulationConfig
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
     ) -> None:
         """Sampler should wait for min_providers_before_sample provider announcements."""
-        node = Node(ActorId("sampler-node"), simulator, config, custody_columns=8)
+        node = Node(ActorId("sampler-node"), simulator, config, custody_columns=8, metrics=metrics)
         simulator.register_actor(node)
         network.register_node(node.id, region=None)
 
@@ -572,10 +599,14 @@ class TestPeerManagement:
 
 class TestAnnouncement:
     def test_completed_tx_announced_to_peers(
-        self, simulator: Simulator, network: Network, config: SimulationConfig
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
     ) -> None:
         """Completed transaction is announced to all peers."""
-        node = Node(ActorId("test-node"), simulator, config, custody_columns=8)
+        node = Node(ActorId("test-node"), simulator, config, custody_columns=8, metrics=metrics)
         simulator.register_actor(node)
         network.register_node(node.id, region=None)
 
