@@ -10,12 +10,12 @@ This document outlines the phased implementation approach for building the EIP-8
 
 ### 1.1 Project setup
 
-- [ ] Initialize with `uv init`
-- [ ] Configure `pyproject.toml`:
+- [x] Initialize with `uv init`
+- [x] Configure `pyproject.toml`:
   - Python 3.13+
   - Dependencies: `pydantic`, `numpy`, `networkx`
   - Dev dependencies: `pytest`, `ruff`
-- [ ] Create directory structure per spec section 11
+- [x] Create directory structure per spec section 11
 
 #### Files
 
@@ -29,10 +29,10 @@ This document outlines the phased implementation approach for building the EIP-8
 
 ### 1.2 Event loop & actor base
 
-- [ ] Implement `Event` dataclass with ordering
-- [ ] Implement `Simulator` with `heapq`-based event queue
-- [ ] Implement `Actor` ABC with `on_event()` entrypoint
-- [ ] Implement `schedule()` and timer scheduling
+- [x] Implement `Event` dataclass with ordering
+- [x] Implement `Simulator` with `heapq`-based event queue
+- [x] Implement `Actor` ABC with `on_event()` entrypoint
+- [x] Implement `schedule()` and timer scheduling
 
 #### Files
 
@@ -55,10 +55,10 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 1.3 Network actor
 
-- [ ] Implement `Network` actor extending `Actor`
-- [ ] Implement latency matrix with region pairs
-- [ ] Implement basic delay calculation (no CoDel yet)
-- [ ] Wire `SendRequest` → delayed `Message` delivery
+- [x] Implement `Network` actor extending `Actor`
+- [x] Implement latency matrix with region pairs
+- [x] Implement basic delay calculation (no CoDel yet)
+- [x] Wire `SendRequest` → delayed `Message` delivery
 
 #### Files
 
@@ -80,12 +80,12 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 2.1 Message types
 
-- [ ] Implement `Message` base with `size_bytes`
-- [ ] Implement all eth/71 messages:
+- [x] Implement `Message` base with `size_bytes`
+- [x] Implement all eth/71 messages:
   - `NewPooledTransactionHashes`
   - `GetPooledTransactions` / `PooledTransactions`
   - `GetCells` / `Cells`
-- [ ] Implement `BlockAnnouncement`
+- [x] Implement `BlockAnnouncement`
 
 #### Files
 
@@ -98,11 +98,11 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 2.2 Blobpool state
 
-- [ ] Implement `Blobpool` with tx tracking
-- [ ] Implement `BlobTxEntry` with all fields
-- [ ] Implement `by_sender` index for nonce tracking
-- [ ] Implement RBF logic (`try_replace`, fee bump validation)
-- [ ] Implement size-based eviction
+- [x] Implement `Blobpool` with tx tracking
+- [x] Implement `BlobTxEntry` with all fields
+- [x] Implement `by_sender` index for nonce tracking
+- [x] Implement RBF logic (`try_replace`, fee bump validation)
+- [x] Implement size-based eviction
 
 #### Files
 
@@ -120,13 +120,13 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 2.3 Node actor
 
-- [ ] Implement `Node` extending `Actor`
-- [ ] Implement `on_event()` dispatcher
-- [ ] Implement role determination (hash-based, p=0.15)
-- [ ] Implement provider flow: fetch full blob
-- [ ] Implement sampler flow: wait for providers, fetch custody cells
-- [ ] Implement request timeout handling
-- [ ] Implement reannouncement after successful fetch
+- [x] Implement `Node` extending `Actor`
+- [x] Implement `on_event()` dispatcher
+- [x] Implement role determination (hash-based, p=0.15)
+- [x] Implement provider flow: fetch full blob
+- [x] Implement sampler flow: wait for providers, fetch custody cells
+- [x] Implement request timeout handling
+- [x] Implement reannouncement after successful fetch
 
 #### Files
 
@@ -148,11 +148,11 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 3.1 BlockProducer actor
 
-- [ ] Implement `BlockProducer` extending `Actor`
-- [ ] Implement slot tick scheduling (12s interval)
-- [ ] Implement proposer rotation
-- [ ] Implement blob selection with inclusion policies
-- [ ] Implement `BlockAnnouncement` broadcast
+- [x] Implement `BlockProducer` extending `Actor`
+- [x] Implement slot tick scheduling (12s interval)
+- [x] Implement proposer rotation
+- [x] Implement blob selection with inclusion policies
+- [x] Implement `BlockAnnouncement` broadcast
 
 #### Files
 
@@ -164,10 +164,10 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 3.2 Node block handling
 
-- [ ] Handle `BlockAnnouncement` in Node
-- [ ] Mark included txs as `INCLUDED`
-- [ ] Schedule cleanup timers
-- [ ] Remove txs after cleanup delay
+- [x] Handle `BlockAnnouncement` in Node
+- [x] Mark included txs as `INCLUDED`
+- [x] Schedule cleanup timers
+- [x] Remove txs after cleanup delay
 
 #### Verification
 
