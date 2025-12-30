@@ -4,7 +4,13 @@ from dataclasses import dataclass
 
 from sparse_blobpool.config import Region
 from sparse_blobpool.core.actor import Actor, EventPayload, Message
-from sparse_blobpool.core.network import LATENCY_DEFAULTS, LatencyParams, Network
+from sparse_blobpool.core.network import (
+    LATENCY_DEFAULTS,
+    CoDelConfig,
+    CoDelState,
+    LatencyParams,
+    Network,
+)
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId
 from sparse_blobpool.metrics.collector import MetricsCollector
@@ -284,3 +290,134 @@ class TestNetwork:
 
         # Should still work with default region
         assert len(receiver.received) == 1
+
+
+class TestCoDelState:
+    def test_default_values(self) -> None:
+        """CoDelState initializes with zero values."""
+        state = CoDelState()
+        assert state.queue_bytes == 0.0
+        assert state.queue_start_time == 0.0
+        assert state.drop_count == 0
+        assert state.last_drop_time == 0.0
+
+
+class TestCoDelConfig:
+    def test_default_values(self) -> None:
+        """CoDelConfig has sensible defaults."""
+        config = CoDelConfig()
+        assert config.target_delay == 0.005  # 5ms
+        assert config.interval == 0.100  # 100ms
+        assert config.max_queue_bytes == 10 * 1024 * 1024  # 10 MB
+        assert config.drain_rate == 100 * 1024 * 1024  # 100 MB/s
+
+    def test_custom_values(self) -> None:
+        """CoDelConfig accepts custom values."""
+        config = CoDelConfig(
+            target_delay=0.010,
+            interval=0.200,
+            max_queue_bytes=5 * 1024 * 1024,
+            drain_rate=50 * 1024 * 1024,
+        )
+        assert config.target_delay == 0.010
+        assert config.interval == 0.200
+
+
+class TestCoDelBehavior:
+    def test_codel_state_created_per_link(self) -> None:
+        """CoDel state is created and tracked per link."""
+        sim = Simulator()
+        network = make_network(sim)
+        sim.register_actor(network)
+
+        # Get state for a link - creates new state
+        state1 = network._get_codel_state(ActorId("a"), ActorId("b"))
+        assert state1.queue_bytes == 0.0
+
+        # Same link returns same state
+        state2 = network._get_codel_state(ActorId("a"), ActorId("b"))
+        assert state1 is state2
+
+        # Different link returns different state
+        state3 = network._get_codel_state(ActorId("a"), ActorId("c"))
+        assert state1 is not state3
+
+    def test_codel_adds_queue_delay(self) -> None:
+        """CoDel adds delay when queue builds up."""
+        sim = Simulator()
+        # Use small drain rate to build queue
+        codel_config = CoDelConfig(drain_rate=1000)  # 1 KB/s
+        network = make_network(sim, codel_config=codel_config)
+        sim.register_actor(network)
+
+        # Calculate delay for a large message
+        delay = network._codel_delay(ActorId("a"), ActorId("b"), 10000)
+
+        # With 10KB at 1KB/s drain rate, sojourn should be ~10s
+        assert delay > 1.0  # Should be significant
+
+    def test_codel_queue_drains_over_time(self) -> None:
+        """CoDel queue drains based on elapsed time."""
+        sim = Simulator()
+        codel_config = CoDelConfig(drain_rate=1000)  # 1 KB/s
+        network = make_network(sim, codel_config=codel_config)
+        sim.register_actor(network)
+
+        # Add bytes to queue
+        network._codel_delay(ActorId("a"), ActorId("b"), 1000)
+        state = network._get_codel_state(ActorId("a"), ActorId("b"))
+        initial_bytes = state.queue_bytes
+
+        # Advance time by 0.5 seconds (should drain 500 bytes)
+        sim._current_time = 0.5
+
+        # Add more bytes - this triggers drain calculation
+        network._codel_delay(ActorId("a"), ActorId("b"), 100)
+        # Queue should be: initial - drained + new = 1000 - 500 + 100 = 600
+        assert state.queue_bytes < initial_bytes
+
+    def test_codel_respects_max_queue_size(self) -> None:
+        """CoDel caps queue at max size."""
+        sim = Simulator()
+        codel_config = CoDelConfig(max_queue_bytes=1000, drain_rate=1)  # 1 KB max
+        network = make_network(sim, codel_config=codel_config)
+        sim.register_actor(network)
+
+        # Try to add more than max
+        network._codel_delay(ActorId("a"), ActorId("b"), 5000)
+        state = network._get_codel_state(ActorId("a"), ActorId("b"))
+
+        # Should be capped at max
+        assert state.queue_bytes == 1000.0
+
+    def test_congestion_increases_delay(self) -> None:
+        """Sustained congestion increases delay via drop count."""
+        sim = Simulator()
+        # Configure for easy testing
+        codel_config = CoDelConfig(
+            target_delay=0.001,  # 1ms target
+            interval=0.001,  # 1ms interval
+            drain_rate=1000,  # 1 KB/s
+        )
+        network = make_network(sim, codel_config=codel_config)
+        sim.register_actor(network)
+
+        # First message - builds queue
+        _ = network._codel_delay(ActorId("a"), ActorId("b"), 100)
+
+        # Advance time past interval
+        sim._current_time = 0.01
+
+        # Second message - should trigger drop count increment
+        _ = network._codel_delay(ActorId("a"), ActorId("b"), 100)
+
+        # Advance time again
+        sim._current_time = 0.02
+
+        # Third message - more delays
+        _ = network._codel_delay(ActorId("a"), ActorId("b"), 100)
+
+        # Delays should generally increase with congestion
+        # (exact values depend on queue state)
+        state = network._get_codel_state(ActorId("a"), ActorId("b"))
+        assert state.drop_count > 0  # Should have started counting

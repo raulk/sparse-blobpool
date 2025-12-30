@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,38 @@ class LatencyParams:
 
     base_ms: float  # Base one-way delay in milliseconds
     jitter_ratio: float  # Standard deviation as fraction of base
+
+
+@dataclass
+class CoDelState:
+    """Per-link CoDel queue state for congestion modeling.
+
+    CoDel (Controlled Delay) is an active queue management algorithm that
+    adds delays during congestion to model realistic network behavior.
+    """
+
+    # Virtual queue depth in bytes
+    queue_bytes: float = 0.0
+    # Time when queue last became non-empty
+    queue_start_time: float = 0.0
+    # Number of consecutive drops/delays (for sqrt backoff)
+    drop_count: int = 0
+    # Time of last drop decision
+    last_drop_time: float = 0.0
+
+
+@dataclass
+class CoDelConfig:
+    """Configuration for CoDel queue modeling."""
+
+    # Target queue delay in seconds (CoDel default: 5ms)
+    target_delay: float = 0.005
+    # Interval for drop decisions in seconds (CoDel default: 100ms)
+    interval: float = 0.100
+    # Maximum queue size in bytes before tail drop
+    max_queue_bytes: int = 10 * 1024 * 1024  # 10 MB
+    # Queue drain rate (virtual) in bytes/sec
+    drain_rate: float = 100 * 1024 * 1024  # 100 MB/s
 
 
 # Default latency matrix (one-way delay)
@@ -48,6 +81,7 @@ class Network(Actor):
     - Base latency between regions
     - Random jitter
     - Transmission time based on message size and bandwidth limits
+    - CoDel queue delay during congestion
     """
 
     def __init__(
@@ -56,15 +90,20 @@ class Network(Actor):
         metrics: MetricsCollector,
         latency_matrix: dict[tuple[Region, Region], LatencyParams] | None = None,
         default_bandwidth: float = 100 * 1024 * 1024,  # 100 MB/s
+        codel_config: CoDelConfig | None = None,
     ) -> None:
         super().__init__(NETWORK_ACTOR_ID, simulator)
         self._latency_matrix = latency_matrix or LATENCY_DEFAULTS
         self._default_bandwidth = default_bandwidth
         self._metrics = metrics
+        self._codel_config = codel_config or CoDelConfig()
 
         # Actor metadata
         self._actor_regions: dict[ActorId, Region] = {}
         self._actor_bandwidth: dict[ActorId, float] = {}
+
+        # Per-link CoDel state
+        self._codel_state: dict[tuple[ActorId, ActorId], CoDelState] = {}
 
         # Statistics
         self._messages_delivered: int = 0
@@ -126,6 +165,7 @@ class Network(Actor):
         - Base latency between regions
         - Gaussian jitter
         - Transmission time (size / bandwidth)
+        - CoDel queue delay during congestion
         """
         # Get regions (default to NA if not registered)
         from_region = self._actor_regions.get(from_, Region.NA)
@@ -148,7 +188,68 @@ class Network(Actor):
         to_bw = self._actor_bandwidth.get(to, self._default_bandwidth)
         transmission = size_bytes / min(from_bw, to_bw)
 
-        return max(0, base + jitter + transmission)
+        # CoDel queue delay
+        codel = self._codel_delay(from_, to, size_bytes)
+
+        return max(0, base + jitter + transmission + codel)
+
+    def _get_codel_state(self, from_: ActorId, to: ActorId) -> CoDelState:
+        """Get or create CoDel state for a link."""
+        link = (from_, to)
+        if link not in self._codel_state:
+            self._codel_state[link] = CoDelState()
+        return self._codel_state[link]
+
+    def _codel_delay(self, from_: ActorId, to: ActorId, size_bytes: int) -> float:
+        """Calculate CoDel-based queue delay.
+
+        Implements a simplified CoDel model:
+        1. Track virtual queue depth per link
+        2. Drain queue over time based on configured rate
+        3. Add sojourn delay proportional to queue depth
+        4. Use sqrt backoff for consecutive delays
+        """
+        current_time = self._simulator.current_time
+        config = self._codel_config
+        state = self._get_codel_state(from_, to)
+
+        # Drain queue based on elapsed time since last update
+        if state.queue_bytes > 0 and state.queue_start_time >= 0:
+            elapsed = current_time - state.queue_start_time
+            if elapsed > 0:
+                drained = elapsed * config.drain_rate
+                state.queue_bytes = max(0, state.queue_bytes - drained)
+                if state.queue_bytes == 0:
+                    state.drop_count = 0  # Reset drop count when queue empties
+
+        # Add new bytes to queue
+        state.queue_bytes += size_bytes
+        state.queue_start_time = current_time
+
+        # Cap at max queue size (tail drop)
+        if state.queue_bytes > config.max_queue_bytes:
+            state.queue_bytes = float(config.max_queue_bytes)
+
+        # Calculate sojourn time (time packet would spend in queue)
+        sojourn = state.queue_bytes / config.drain_rate
+
+        # If sojourn exceeds target for an interval, increase delay
+        if sojourn > config.target_delay:
+            time_since_drop = current_time - state.last_drop_time
+
+            if time_since_drop > config.interval / math.sqrt(max(1, state.drop_count)):
+                state.drop_count += 1
+                state.last_drop_time = current_time
+
+            # Delay scales with sqrt of consecutive delays (CoDel backoff)
+            delay_factor = math.sqrt(state.drop_count) if state.drop_count > 0 else 0
+            return sojourn * (1 + delay_factor * 0.5)
+
+        # Queue under target - reset drop count gradually
+        if state.drop_count > 0 and sojourn < config.target_delay * 0.5:
+            state.drop_count = max(0, state.drop_count - 1)
+
+        return sojourn
 
     @property
     def messages_delivered(self) -> int:
