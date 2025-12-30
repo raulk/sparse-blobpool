@@ -1,16 +1,13 @@
 """Baseline honest network scenario.
 
-This module provides the `build_simulation()` factory for creating a fully
-configured simulation with:
+This module provides the `build_simulator()` factory for creating a fully
+configured simulator with:
 - Network actor for message delivery
 - Node actors with P2P connections
 - BlockProducer for slot-based block production
 """
 
 from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from ..config import SimulationConfig
 from ..core.block_producer import BlockProducer, SlotConfig
@@ -23,29 +20,9 @@ from ..p2p.topology import build_topology
 from ..protocol.constants import ALL_ONES
 from ..protocol.messages import BroadcastTransaction
 
-if TYPE_CHECKING:
-    from ..metrics.results import SimulationResults
-    from ..p2p.topology import TopologyResult
 
-
-@dataclass
-class SimulationResult:
-    """Results from running the simulation."""
-
-    simulator: Simulator
-    nodes: list[Node]
-    network: Network
-    block_producer: BlockProducer
-    topology: TopologyResult
-    metrics: MetricsCollector
-
-    def finalize_metrics(self) -> SimulationResults:
-        """Finalize and return simulation metrics."""
-        return self.metrics.finalize()
-
-
-def build_simulation(config: SimulationConfig | None = None) -> SimulationResult:
-    """Build a fully configured simulation.
+def build_simulator(config: SimulationConfig | None = None) -> Simulator:
+    """Build a fully configured simulator.
 
     Creates all actors (Network, Nodes, BlockProducer), establishes peer
     connections based on the configured topology strategy, and registers
@@ -55,7 +32,7 @@ def build_simulation(config: SimulationConfig | None = None) -> SimulationResult
         config: Simulation configuration. Uses defaults if not provided.
 
     Returns:
-        SimulationResult containing the simulator and all actors.
+        Configured Simulator with all actors registered.
     """
     if config is None:
         config = SimulationConfig()
@@ -116,18 +93,18 @@ def build_simulation(config: SimulationConfig | None = None) -> SimulationResult
     # Register all nodes with BlockProducer for proposer selection
     block_producer.register_nodes([node.id for node in nodes])
 
-    return SimulationResult(
-        simulator=simulator,
-        nodes=nodes,
-        network=network,
-        block_producer=block_producer,
-        topology=topology,
-        metrics=metrics,
-    )
+    # Set scenario-level state on simulator
+    simulator._nodes = nodes
+    simulator._network = network
+    simulator._block_producer = block_producer
+    simulator._topology = topology
+    simulator._metrics = metrics
+
+    return simulator
 
 
 def broadcast_transaction(
-    result: SimulationResult,
+    sim: Simulator,
     origin_node: Node | None = None,
     tx_hash: TxHash | None = None,
 ) -> TxHash:
@@ -137,7 +114,7 @@ def broadcast_transaction(
     add the tx to its pool and announce to all peers.
 
     Args:
-        result: The simulation result containing all actors.
+        sim: The configured simulator.
         origin_node: Node to broadcast from. Uses first node if not specified.
         tx_hash: Transaction hash. Generates random if not specified.
 
@@ -145,15 +122,15 @@ def broadcast_transaction(
         The transaction hash that was broadcast.
     """
     if origin_node is None:
-        origin_node = result.nodes[0]
+        origin_node = sim.nodes[0]
 
     if tx_hash is None:
-        rand_bytes = result.simulator.rng.randbytes(32)
+        rand_bytes = sim.rng.randbytes(32)
         tx_hash = TxHash(rand_bytes.hex())
 
     # Schedule immediate event to the origin node
     event = Event(
-        timestamp=result.simulator.current_time,
+        timestamp=sim.current_time,
         target_id=origin_node.id,
         payload=BroadcastTransaction(
             sender=origin_node.id,
@@ -168,7 +145,7 @@ def broadcast_transaction(
             cell_mask=ALL_ONES,  # Origin has full blob
         ),
     )
-    result.simulator.schedule(event)
+    sim.schedule(event)
 
     return tx_hash
 
@@ -177,7 +154,7 @@ def run_baseline_scenario(
     config: SimulationConfig | None = None,
     num_transactions: int = 10,
     run_duration: float | None = None,
-) -> SimulationResult:
+) -> Simulator:
     """Run a baseline honest network scenario.
 
     Creates the simulation, injects transactions, starts block production,
@@ -189,7 +166,7 @@ def run_baseline_scenario(
         run_duration: How long to run. Uses config.duration if not specified.
 
     Returns:
-        SimulationResult after running the simulation.
+        Simulator after running.
     """
     if config is None:
         config = SimulationConfig()
@@ -197,21 +174,21 @@ def run_baseline_scenario(
     if run_duration is None:
         run_duration = config.duration
 
-    result = build_simulation(config)
+    sim = build_simulator(config)
 
     # Broadcast initial transactions from random nodes
     for _ in range(num_transactions):
-        origin_idx = result.simulator.rng.randint(0, len(result.nodes) - 1)
-        origin_node = result.nodes[origin_idx]
-        broadcast_transaction(result, origin_node)
+        origin_idx = sim.rng.randint(0, len(sim.nodes) - 1)
+        origin_node = sim.nodes[origin_idx]
+        broadcast_transaction(sim, origin_node)
 
     # Start block production
-    result.block_producer.start()
+    sim.block_producer.start()
 
     # Run simulation
-    result.simulator.run(run_duration)
+    sim.run(run_duration)
 
-    return result
+    return sim
 
 
 def main() -> None:
@@ -227,56 +204,56 @@ def main() -> None:
     )
 
     start = time.time()
-    result = build_simulation(config)
+    sim = build_simulator(config)
     build_time = time.time() - start
     print(f"Build completed in {build_time:.2f}s")
 
     # Check connectivity
-    min_peers = min(len(node.peers) for node in result.nodes)
-    max_peers = max(len(node.peers) for node in result.nodes)
-    avg_peers = sum(len(node.peers) for node in result.nodes) / len(result.nodes)
+    min_peers = min(len(node.peers) for node in sim.nodes)
+    max_peers = max(len(node.peers) for node in sim.nodes)
+    avg_peers = sum(len(node.peers) for node in sim.nodes) / len(sim.nodes)
     print(f"Peer connections: min={min_peers}, avg={avg_peers:.1f}, max={max_peers}")
 
     # Count edges
-    print(f"Total edges in topology: {len(result.topology.edges)}")
+    print(f"Total edges in topology: {len(sim.topology.edges)}")
 
     # Broadcast 10 transactions
     print("\nBroadcasting 10 transactions...")
     tx_hashes = []
     for _ in range(10):
-        origin_idx = result.simulator.rng.randint(0, len(result.nodes) - 1)
-        tx_hash = broadcast_transaction(result, result.nodes[origin_idx])
+        origin_idx = sim.rng.randint(0, len(sim.nodes) - 1)
+        tx_hash = broadcast_transaction(sim, sim.nodes[origin_idx])
         tx_hashes.append(tx_hash)
 
     # Start block production
-    result.block_producer.start()
+    sim.block_producer.start()
 
     # Run simulation
     print(f"\nRunning simulation for {config.duration}s of simulated time...")
     start = time.time()
-    result.simulator.run(config.duration)
+    sim.run(config.duration)
     run_time = time.time() - start
     print(f"Simulation completed in {run_time:.2f}s (wall clock)")
 
     # Print statistics
     print("\n=== Simulation Statistics ===")
-    print(f"Simulated time: {result.simulator.current_time:.1f}s")
-    print(f"Events processed: {result.simulator.events_processed}")
-    print(f"Messages delivered: {result.network.messages_delivered}")
-    print(f"Total bytes transmitted: {result.network.total_bytes / 1024 / 1024:.1f} MB")
-    print(f"Blocks produced: {result.block_producer.blocks_produced}")
-    print(f"Blobs included: {result.block_producer.total_blobs_included}")
+    print(f"Simulated time: {sim.current_time:.1f}s")
+    print(f"Events processed: {sim.events_processed}")
+    print(f"Messages delivered: {sim.network.messages_delivered}")
+    print(f"Total bytes transmitted: {sim.network.total_bytes / 1024 / 1024:.1f} MB")
+    print(f"Blocks produced: {sim.block_producer.blocks_produced}")
+    print(f"Blobs included: {sim.block_producer.total_blobs_included}")
 
     # Check propagation - count how many nodes have each tx in their pool
     print("\n=== Transaction Propagation ===")
     for tx_hash in tx_hashes[:3]:  # Just show first 3
-        nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))
-        pct = 100 * nodes_with_tx / len(result.nodes)
-        print(f"{tx_hash[:16]}...: {nodes_with_tx}/{len(result.nodes)} nodes ({pct:.1f}%)")
+        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
+        pct = 100 * nodes_with_tx / len(sim.nodes)
+        print(f"{tx_hash[:16]}...: {nodes_with_tx}/{len(sim.nodes)} nodes ({pct:.1f}%)")
 
     # Finalize and print metrics
     print("\n=== Metrics Analysis ===")
-    metrics_results = result.finalize_metrics()
+    metrics_results = sim.finalize_metrics()
     print(f"Total bandwidth: {metrics_results.total_bandwidth_bytes / 1024 / 1024:.1f} MB")
     print(f"Bandwidth per blob: {metrics_results.bandwidth_per_blob / 1024:.1f} KB")
     print(f"Bandwidth reduction vs full: {metrics_results.bandwidth_reduction_vs_full:.2f}x")

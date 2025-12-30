@@ -5,40 +5,40 @@ import pytest
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.scenarios.baseline import (
     broadcast_transaction,
-    build_simulation,
+    build_simulator,
 )
 
 
 class TestBuildSimulation:
     def test_creates_correct_node_count(self) -> None:
         config = SimulationConfig(node_count=100, mesh_degree=10)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         assert len(result.nodes) == 100
 
     def test_nodes_registered_with_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         # All nodes should be in the simulator's actors
         for node in result.nodes:
-            assert node.id in result.simulator.actors
+            assert node.id in result.actors
 
     def test_network_registered_with_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
-        assert result.network.id in result.simulator.actors
+        assert result.network.id in result.actors
 
     def test_block_producer_registered_with_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
-        assert result.block_producer.id in result.simulator.actors
+        assert result.block_producer.id in result.actors
 
     def test_nodes_have_peers(self) -> None:
         config = SimulationConfig(node_count=100, mesh_degree=10)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         # All nodes should have some peers
         for node in result.nodes:
@@ -46,12 +46,12 @@ class TestBuildSimulation:
 
     def test_peer_connections_bidirectional(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         # If A is connected to B, B should be connected to A
         for node in result.nodes:
             for peer_id in node.peers:
-                peer = result.simulator.actors[peer_id]
+                peer = result.actors[peer_id]
                 if hasattr(peer, "peers"):
                     assert node.id in peer.peers
 
@@ -59,35 +59,35 @@ class TestBuildSimulation:
 class TestBroadcastTransaction:
     def test_adds_tx_to_origin_pool(self) -> None:
         config = SimulationConfig(node_count=10, mesh_degree=3)
-        result = build_simulation(config)
+        result = build_simulator(config)
         origin = result.nodes[0]
 
         tx_hash = broadcast_transaction(result, origin)
 
         # Run briefly to process the broadcast event
-        result.simulator.run(0.001)
+        result.run(0.001)
 
         assert origin.pool.contains(tx_hash)
 
     def test_announces_to_peers(self) -> None:
         config = SimulationConfig(node_count=10, mesh_degree=3)
-        result = build_simulation(config)
+        result = build_simulator(config)
         origin = result.nodes[0]
 
         broadcast_transaction(result, origin)
 
         # Should have scheduled the broadcast event
-        assert result.simulator.pending_event_count() > 0
+        assert result.pending_event_count() > 0
 
     def test_tx_in_pool_after_propagation(self) -> None:
         config = SimulationConfig(node_count=20, mesh_degree=5)
-        result = build_simulation(config)
+        result = build_simulator(config)
         origin = result.nodes[0]
 
         tx_hash = broadcast_transaction(result, origin)
 
         # Run simulation briefly to let tx propagate
-        result.simulator.run(5.0)  # 5 seconds should be enough
+        result.run(5.0)  # 5 seconds should be enough
 
         # Check propagation
         nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))
@@ -104,13 +104,13 @@ class TestPropagation:
             mesh_degree=20,  # Higher connectivity for faster propagation
             duration=30.0,
         )
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         # Broadcast transaction
         tx_hash = broadcast_transaction(result, result.nodes[0])
 
         # Run simulation - give enough time for multi-hop propagation
-        result.simulator.run(15.0)
+        result.run(15.0)
 
         # Check propagation
         nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))
@@ -124,16 +124,16 @@ class TestPropagation:
 class TestBlockProduction:
     def test_block_producer_starts_ticking(self) -> None:
         config = SimulationConfig(node_count=10, mesh_degree=3)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         result.block_producer.start()
 
         # Should have scheduled a slot tick
-        assert result.simulator.pending_event_count() > 0
+        assert result.pending_event_count() > 0
 
     def test_blocks_produced_over_time(self) -> None:
         config = SimulationConfig(node_count=20, mesh_degree=5)
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         # Broadcast some transactions
         for _ in range(5):
@@ -143,7 +143,7 @@ class TestBlockProduction:
         result.block_producer.start()
 
         # Run for 2 slots (24 seconds)
-        result.simulator.run(26.0)
+        result.run(26.0)
 
         # Should have produced at least 1 block
         assert result.block_producer.blocks_produced >= 1
@@ -157,7 +157,7 @@ class TestLargeScale:
             node_count=2000,
             mesh_degree=50,
         )
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         assert len(result.nodes) == 2000
 
@@ -179,13 +179,13 @@ class TestLargeScale:
             node_count=2000,
             mesh_degree=50,
         )
-        result = build_simulation(config)
+        result = build_simulator(config)
 
         # Broadcast transaction
         tx_hash = broadcast_transaction(result, result.nodes[0])
 
         # Run for 10 seconds (no block production)
-        result.simulator.run(10.0)
+        result.run(10.0)
 
         # Check propagation
         nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))

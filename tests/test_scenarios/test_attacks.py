@@ -21,7 +21,7 @@ class TestSpamAttackScenario:
         )
 
         assert result.spam_txs_injected > 0
-        assert result.simulation.simulator.events_processed > 0
+        assert result.simulator.events_processed > 0
 
     def test_spam_rate_affects_injection_count(self) -> None:
         """Higher spam rate results in more injected transactions."""
@@ -57,8 +57,8 @@ class TestSpamAttackScenario:
         )
 
         # Should generate traffic
-        assert result.simulation.network.total_bytes > 0
-        assert result.simulation.network.messages_delivered > 0
+        assert result.simulator.network.total_bytes > 0
+        assert result.simulator.network.messages_delivered > 0
 
 
 class TestPoisoningAttackScenario:
@@ -144,7 +144,7 @@ class TestAttackMetrics:
             num_honest_transactions=2,
         )
 
-        metrics = result.simulation.finalize_metrics()
+        metrics = result.simulator.finalize_metrics()
         assert metrics.total_bandwidth_bytes > 0
 
     def test_metrics_collected_during_poisoning(self) -> None:
@@ -161,5 +161,5 @@ class TestAttackMetrics:
             num_honest_transactions=2,
         )
 
-        metrics = result.simulation.finalize_metrics()
+        metrics = result.simulator.finalize_metrics()
         assert metrics.total_bandwidth_bytes > 0

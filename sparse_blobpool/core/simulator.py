@@ -8,7 +8,13 @@ from random import Random
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
+    from ..metrics.collector import MetricsCollector
+    from ..metrics.results import SimulationResults
+    from ..p2p.node import Node
+    from ..p2p.topology import TopologyResult
     from .actor import Actor, EventPayload
+    from .block_producer import BlockProducer
+    from .network import Network
     from .types import ActorId
 
 ActorT = TypeVar("ActorT", bound="Actor")
@@ -41,6 +47,12 @@ class Simulator:
         self._actors: dict[ActorId, Actor] = {}
         self._rng = Random(seed)
         self._events_processed: int = 0
+        # Scenario-level state (set by build_simulator)
+        self._nodes: list[Node] | None = None
+        self._network: Network | None = None
+        self._block_producer: BlockProducer | None = None
+        self._topology: TopologyResult | None = None
+        self._metrics: MetricsCollector | None = None
 
     @property
     def current_time(self) -> float:
@@ -65,6 +77,40 @@ class Simulator:
     @property
     def events_processed(self) -> int:
         return self._events_processed
+
+    @property
+    def nodes(self) -> list[Node]:
+        if self._nodes is None:
+            raise RuntimeError("Simulator not configured with nodes")
+        return self._nodes
+
+    @property
+    def network(self) -> Network:
+        if self._network is None:
+            raise RuntimeError("Simulator not configured with network")
+        return self._network
+
+    @property
+    def block_producer(self) -> BlockProducer:
+        if self._block_producer is None:
+            raise RuntimeError("Simulator not configured with block_producer")
+        return self._block_producer
+
+    @property
+    def topology(self) -> TopologyResult:
+        if self._topology is None:
+            raise RuntimeError("Simulator not configured with topology")
+        return self._topology
+
+    @property
+    def metrics(self) -> MetricsCollector:
+        if self._metrics is None:
+            raise RuntimeError("Simulator not configured with metrics")
+        return self._metrics
+
+    def finalize_metrics(self) -> SimulationResults:
+        """Finalize and return simulation metrics."""
+        return self.metrics.finalize()
 
     def register_actor(self, actor: Actor) -> None:
         """Register an actor with the simulator."""
