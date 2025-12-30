@@ -5,11 +5,13 @@ from __future__ import annotations
 import heapq
 from dataclasses import dataclass, field
 from random import Random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from .actor import Actor, EventPayload
     from .types import ActorId
+
+ActorT = TypeVar("ActorT", bound="Actor")
 
 
 @dataclass(order=True)
@@ -51,6 +53,14 @@ class Simulator:
     @property
     def actors(self) -> dict[ActorId, Actor]:
         return self._actors
+
+    def actors_by_type(self, actor_type: type[ActorT]) -> list[ActorT]:
+        """Return all actors of a specific type.
+
+        Uses generic type parameter to provide proper type hints for the
+        returned list.
+        """
+        return [actor for actor in self._actors.values() if isinstance(actor, actor_type)]
 
     @property
     def events_processed(self) -> int:

@@ -12,6 +12,7 @@ from ..pool.blobpool import Blobpool, BlobTxEntry, PoolFull, RBFRejected, Sender
 from ..protocol.constants import ALL_ONES
 from ..protocol.messages import (
     BlockAnnouncement,
+    BroadcastTransaction,
     Cells,
     GetCells,
     GetPooledTransactions,
@@ -118,6 +119,8 @@ class Node(Actor):
     def on_event(self, payload: EventPayload) -> None:
         """Dispatch events to appropriate handlers."""
         match payload:
+            case BroadcastTransaction() as msg:
+                self._handle_broadcast_transaction(msg)
             case NewPooledTransactionHashes() as msg:
                 self._handle_announcement(msg)
             case GetPooledTransactions() as msg:
@@ -138,6 +141,31 @@ class Node(Actor):
                 self._handle_tx_cleanup(ctx)
             case Message():
                 pass  # Unknown message type
+
+    def _handle_broadcast_transaction(self, msg: BroadcastTransaction) -> None:
+        """Handle a local broadcast transaction event.
+
+        Creates a pool entry for the transaction and announces to all peers.
+        Used for injecting transactions into the simulation.
+        """
+        entry = BlobTxEntry(
+            tx_hash=msg.tx_hash,
+            sender=msg.tx_sender,
+            nonce=msg.nonce,
+            gas_fee_cap=msg.gas_fee_cap,
+            gas_tip_cap=msg.gas_tip_cap,
+            blob_gas_price=msg.blob_gas_price,
+            tx_size=msg.tx_size,
+            blob_count=msg.blob_count,
+            cell_mask=msg.cell_mask,
+            received_at=self._simulator.current_time,
+        )
+
+        try:
+            self._pool.add(entry)
+            self._announce_tx(entry)
+        except (RBFRejected, SenderLimitExceeded, PoolFull):
+            pass  # Transaction rejected
 
     def _determine_role(self, tx_hash: TxHash) -> Role:
         """Determine role for a transaction using hash-based probability.

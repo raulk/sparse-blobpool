@@ -4,9 +4,8 @@ import pytest
 
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.scenarios.baseline import (
-    SimulationResult,
+    broadcast_transaction,
     build_simulation,
-    inject_transaction,
 )
 
 
@@ -57,13 +56,16 @@ class TestBuildSimulation:
                     assert node.id in peer.peers
 
 
-class TestInjectTransaction:
+class TestBroadcastTransaction:
     def test_adds_tx_to_origin_pool(self) -> None:
         config = SimulationConfig(node_count=10, mesh_degree=3)
         result = build_simulation(config)
         origin = result.nodes[0]
 
-        tx_hash = inject_transaction(result, origin)
+        tx_hash = broadcast_transaction(result, origin)
+
+        # Run briefly to process the broadcast event
+        result.simulator.run(0.001)
 
         assert origin.pool.contains(tx_hash)
 
@@ -72,9 +74,9 @@ class TestInjectTransaction:
         result = build_simulation(config)
         origin = result.nodes[0]
 
-        tx_hash = inject_transaction(result, origin)
+        broadcast_transaction(result, origin)
 
-        # Should have scheduled announcements to all peers
+        # Should have scheduled the broadcast event
         assert result.simulator.pending_event_count() > 0
 
     def test_tx_in_pool_after_propagation(self) -> None:
@@ -82,7 +84,7 @@ class TestInjectTransaction:
         result = build_simulation(config)
         origin = result.nodes[0]
 
-        tx_hash = inject_transaction(result, origin)
+        tx_hash = broadcast_transaction(result, origin)
 
         # Run simulation briefly to let tx propagate
         result.simulator.run(5.0)  # 5 seconds should be enough
@@ -104,8 +106,8 @@ class TestPropagation:
         )
         result = build_simulation(config)
 
-        # Inject transaction
-        tx_hash = inject_transaction(result, result.nodes[0])
+        # Broadcast transaction
+        tx_hash = broadcast_transaction(result, result.nodes[0])
 
         # Run simulation - give enough time for multi-hop propagation
         result.simulator.run(15.0)
@@ -133,9 +135,9 @@ class TestBlockProduction:
         config = SimulationConfig(node_count=20, mesh_degree=5)
         result = build_simulation(config)
 
-        # Inject some transactions
+        # Broadcast some transactions
         for _ in range(5):
-            inject_transaction(result, result.nodes[0])
+            broadcast_transaction(result, result.nodes[0])
 
         # Start block production
         result.block_producer.start()
@@ -179,8 +181,8 @@ class TestLargeScale:
         )
         result = build_simulation(config)
 
-        # Inject transaction
-        tx_hash = inject_transaction(result, result.nodes[0])
+        # Broadcast transaction
+        tx_hash = broadcast_transaction(result, result.nodes[0])
 
         # Run for 10 seconds (no block production)
         result.simulator.run(10.0)

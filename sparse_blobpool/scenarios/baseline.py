@@ -15,13 +15,12 @@ from typing import TYPE_CHECKING
 from ..config import SimulationConfig
 from ..core.block_producer import BlockProducer, SlotConfig
 from ..core.network import Network
-from ..core.simulator import Simulator
+from ..core.simulator import Event, Simulator
 from ..core.types import Address, TxHash
 from ..p2p.node import Node
 from ..p2p.topology import build_topology
-from ..pool.blobpool import BlobTxEntry
 from ..protocol.constants import ALL_ONES
-from ..protocol.messages import NewPooledTransactionHashes
+from ..protocol.messages import BroadcastTransaction
 
 if TYPE_CHECKING:
     from ..p2p.topology import TopologyResult
@@ -82,12 +81,15 @@ def build_simulation(config: SimulationConfig | None = None) -> SimulationResult
         # Register node with network for latency calculations
         network.register_node(node_info.actor_id, node_info.region)
 
+    # Build node lookup for peer connections
+    node_lookup = {node.id: node for node in nodes}
+
     # Establish peer connections
     for node_a_id, node_b_id in topology.edges:
-        node_a = simulator.actors[node_a_id]
-        node_b = simulator.actors[node_b_id]
+        node_a = node_lookup.get(node_a_id)
+        node_b = node_lookup.get(node_b_id)
 
-        if isinstance(node_a, Node) and isinstance(node_b, Node):
+        if node_a is not None and node_b is not None:
             node_a.add_peer(node_b_id)
             node_b.add_peer(node_a_id)
 
@@ -110,58 +112,49 @@ def build_simulation(config: SimulationConfig | None = None) -> SimulationResult
     )
 
 
-def inject_transaction(
+def broadcast_transaction(
     result: SimulationResult,
     origin_node: Node | None = None,
     tx_hash: TxHash | None = None,
 ) -> TxHash:
-    """Inject a transaction into the network via a node.
+    """Broadcast a transaction into the network via a node.
 
-    The transaction is first added to the origin node's pool, then
-    announced to all peers. This allows peers to request the tx back.
+    Schedules a BroadcastTransaction event to the origin node, which will
+    add the tx to its pool and announce to all peers.
 
     Args:
         result: The simulation result containing all actors.
-        origin_node: Node to inject from. Uses first node if not specified.
+        origin_node: Node to broadcast from. Uses first node if not specified.
         tx_hash: Transaction hash. Generates random if not specified.
 
     Returns:
-        The transaction hash that was injected.
+        The transaction hash that was broadcast.
     """
     if origin_node is None:
         origin_node = result.nodes[0]
 
     if tx_hash is None:
-        # Generate a random tx hash
         rand_bytes = result.simulator.rng.randbytes(32)
         tx_hash = TxHash(rand_bytes.hex())
 
-    # Create and add transaction to origin node's pool
-    entry = BlobTxEntry(
-        tx_hash=tx_hash,
-        sender=Address(f"0x{tx_hash[:40]}"),  # Derive fake sender from hash
-        nonce=0,
-        gas_fee_cap=1000000000,  # 1 Gwei
-        gas_tip_cap=100000000,  # 0.1 Gwei
-        blob_gas_price=1000000,  # 1 wei
-        tx_size=131072,  # Standard blob tx size
-        blob_count=1,
-        cell_mask=ALL_ONES,  # Origin has full blob
-        received_at=result.simulator.current_time,
-    )
-    origin_node.pool.add(entry)
-
-    # Announce to all peers as a provider (ALL_ONES cell mask)
-    for peer_id in origin_node.peers:
-        msg = NewPooledTransactionHashes(
+    # Schedule immediate event to the origin node
+    event = Event(
+        timestamp=result.simulator.current_time,
+        target_id=origin_node.id,
+        payload=BroadcastTransaction(
             sender=origin_node.id,
-            types=bytes([3]),  # Type 3 = blob transaction
-            sizes=[entry.tx_size],
-            hashes=[tx_hash],
-            cell_mask=ALL_ONES,
-        )
-        origin_node.send(msg, peer_id)
-        entry.announced_to.add(peer_id)
+            tx_hash=tx_hash,
+            tx_sender=Address(f"0x{tx_hash[:40]}"),  # Derive fake sender from hash
+            nonce=0,
+            gas_fee_cap=1000000000,  # 1 Gwei
+            gas_tip_cap=100000000,  # 0.1 Gwei
+            blob_gas_price=1000000,  # 1 wei
+            tx_size=131072,  # Standard blob tx size
+            blob_count=1,
+            cell_mask=ALL_ONES,  # Origin has full blob
+        ),
+    )
+    result.simulator.schedule(event)
 
     return tx_hash
 
@@ -192,11 +185,11 @@ def run_baseline_scenario(
 
     result = build_simulation(config)
 
-    # Inject initial transactions from random nodes
+    # Broadcast initial transactions from random nodes
     for _ in range(num_transactions):
         origin_idx = result.simulator.rng.randint(0, len(result.nodes) - 1)
         origin_node = result.nodes[origin_idx]
-        inject_transaction(result, origin_node)
+        broadcast_transaction(result, origin_node)
 
     # Start block production
     result.block_producer.start()
@@ -232,12 +225,12 @@ def main() -> None:
     # Count edges
     print(f"Total edges in topology: {len(result.topology.edges)}")
 
-    # Inject 10 transactions
-    print("\nInjecting 10 transactions...")
+    # Broadcast 10 transactions
+    print("\nBroadcasting 10 transactions...")
     tx_hashes = []
     for _ in range(10):
         origin_idx = result.simulator.rng.randint(0, len(result.nodes) - 1)
-        tx_hash = inject_transaction(result, result.nodes[origin_idx])
+        tx_hash = broadcast_transaction(result, result.nodes[origin_idx])
         tx_hashes.append(tx_hash)
 
     # Start block production

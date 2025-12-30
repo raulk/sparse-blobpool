@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 
 from ..core.actor import Message
-from ..core.types import ActorId, TxHash
+from ..core.types import ActorId, Address, TxHash
 from .constants import CELL_SIZE, MESSAGE_OVERHEAD
 
 
@@ -140,3 +140,27 @@ class BlockAnnouncement(Message):
     def size_bytes(self) -> int:
         # slot (8) + proposer (~32) + header overhead (24) + hashes
         return 64 + len(self.block.blob_tx_hashes) * 32
+
+
+@dataclass
+class BroadcastTransaction(Message):
+    """Event to inject a new transaction into a node's pool and announce it.
+
+    This is not a network message but a local event used to inject transactions
+    into the simulation. The receiving node will add the tx to its pool and
+    announce to all peers as a provider.
+    """
+
+    tx_hash: TxHash
+    tx_sender: Address
+    nonce: int
+    gas_fee_cap: int
+    gas_tip_cap: int
+    blob_gas_price: int
+    tx_size: int
+    blob_count: int
+    cell_mask: int  # Cells the origin has (ALL_ONES for full blob)
+
+    @property
+    def size_bytes(self) -> int:
+        return 0  # Local event, not transmitted over network

@@ -2,14 +2,14 @@
 
 from .baseline import (
     SimulationResult,
+    broadcast_transaction,
     build_simulation,
-    inject_transaction,
     run_baseline_scenario,
 )
 
 __all__ = [
     "SimulationResult",
+    "broadcast_transaction",
     "build_simulation",
-    "inject_transaction",
     "run_baseline_scenario",
 ]
