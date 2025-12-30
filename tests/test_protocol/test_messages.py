@@ -4,7 +4,7 @@ from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.protocol.constants import ALL_ONES, CELL_SIZE, MESSAGE_OVERHEAD
 from sparse_blobpool.protocol.messages import (
     Block,
-    BlockAnnouncement,
+    BlockBroadcast,
     Cell,
     Cells,
     GetCells,
@@ -159,7 +159,7 @@ class TestBlockAnnouncement:
             proposer=ActorId("node1"),
             blob_tx_hashes=[TxHash("a" * 64), TxHash("b" * 64)],
         )
-        msg = BlockAnnouncement(sender=ActorId("producer"), block=block)
+        msg = BlockBroadcast(sender=ActorId("producer"), block=block)
         # 64 (header) + 2*32 (hashes)
         assert msg.size_bytes == 64 + 2 * 32
 

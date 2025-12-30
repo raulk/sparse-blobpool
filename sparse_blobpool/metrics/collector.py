@@ -7,13 +7,17 @@ from dataclasses import dataclass, field
 from statistics import median
 from typing import TYPE_CHECKING
 
-from ..protocol.constants import ALL_ONES
-from .results import BandwidthSnapshot, PropagationSnapshot, SimulationResults
+from sparse_blobpool.metrics.results import (
+    BandwidthSnapshot,
+    PropagationSnapshot,
+    SimulationResults,
+)
+from sparse_blobpool.protocol.constants import ALL_ONES
 
 if TYPE_CHECKING:
-    from ..core.simulator import Simulator
-    from ..core.types import ActorId, Region, TxHash
-    from ..p2p.node import Role
+    from sparse_blobpool.core.simulator import Simulator
+    from sparse_blobpool.core.types import ActorId, Region, TxHash
+    from sparse_blobpool.p2p.node import Role
 
 
 # Estimated size of a full blob transaction for bandwidth reduction calculations

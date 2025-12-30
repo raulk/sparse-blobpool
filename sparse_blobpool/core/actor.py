@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Union
 
-from .types import NETWORK_ACTOR_ID, ActorId
+from sparse_blobpool.core.types import NETWORK_ACTOR_ID, ActorId
 
 if TYPE_CHECKING:
-    from .simulator import Simulator
+    from sparse_blobpool.core.simulator import Simulator
 
 
 class TimerKind(Enum):
@@ -88,7 +88,7 @@ class Actor(ABC):
 
     def send(self, msg: Message, to: ActorId) -> None:
         """Request message delivery via Network actor."""
-        from .simulator import Event
+        from sparse_blobpool.core.simulator import Event
 
         self._simulator.schedule(
             Event(
@@ -103,7 +103,7 @@ class Actor(ABC):
         self, delay: float, kind: TimerKind, context: dict[str, Any] | None = None
     ) -> None:
         """Schedule a self-targeted timer."""
-        from .simulator import Event
+        from sparse_blobpool.core.simulator import Event
 
         self._simulator.schedule(
             Event(

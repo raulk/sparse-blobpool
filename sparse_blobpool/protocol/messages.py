@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from ..core.actor import Message
-from ..core.types import ActorId, Address, TxHash
-from .constants import CELL_SIZE, MESSAGE_OVERHEAD
+from sparse_blobpool.core.actor import Message
+from sparse_blobpool.core.types import ActorId, Address, TxHash
+from sparse_blobpool.protocol.constants import CELL_SIZE, MESSAGE_OVERHEAD
 
 
 @dataclass
@@ -131,7 +131,7 @@ class Block:
 
 
 @dataclass
-class BlockAnnouncement(Message):
+class BlockBroadcast(Message):
     """Announce a new block with included blob transactions."""
 
     block: Block

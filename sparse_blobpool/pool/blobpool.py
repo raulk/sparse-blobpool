@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..protocol.constants import ALL_ONES, CELL_SIZE, CELLS_PER_BLOB
+from sparse_blobpool.protocol.constants import ALL_ONES, CELL_SIZE, CELLS_PER_BLOB
 
 if TYPE_CHECKING:
-    from ..config import SimulationConfig
-    from ..core.types import ActorId, Address, TxHash
+    from sparse_blobpool.config import SimulationConfig
+    from sparse_blobpool.core.types import ActorId, Address, TxHash
 
 
 @dataclass

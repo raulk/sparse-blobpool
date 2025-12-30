@@ -62,13 +62,12 @@ Use `ruff` for both formatting and linting. Run:
 
 ## Imports
 
-- Use relative imports within the package (`from .utils import helper`, `from ..core import Simulator`)
-- Use absolute imports for external dependencies
+- **Always use absolute imports** (`from sparse_blobpool.core.simulator import Simulator`)
+- Never use relative imports (no `from .` or `from ..`)
 - Ordering (enforced by ruff):
   1. Standard library
   2. Third-party
-  3. First-party
-  4. Local/relative
+  3. First-party (absolute)
 
 ## Naming over documentation
 

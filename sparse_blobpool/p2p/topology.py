@@ -11,8 +11,8 @@ import networkx as nx
 if TYPE_CHECKING:
     from random import Random
 
-    from ..config import Region, SimulationConfig
-    from ..core.types import ActorId
+    from sparse_blobpool.config import Region, SimulationConfig
+    from sparse_blobpool.core.types import ActorId
 
 
 @dataclass
@@ -58,7 +58,7 @@ class TopologyResult:
 
 
 def build_topology(config: SimulationConfig, rng: Random) -> TopologyResult:
-    from ..config import TopologyStrategy
+    from sparse_blobpool.config import TopologyStrategy
 
     # Generate node IDs and assign regions
     node_infos = _generate_nodes(config, rng)
@@ -77,8 +77,8 @@ def build_topology(config: SimulationConfig, rng: Random) -> TopologyResult:
 
 
 def _generate_nodes(config: SimulationConfig, rng: Random) -> list[NodeInfo]:
-    from ..config import Region
-    from ..core.types import ActorId
+    from sparse_blobpool.config import Region
+    from sparse_blobpool.core.types import ActorId
 
     nodes: list[NodeInfo] = []
 

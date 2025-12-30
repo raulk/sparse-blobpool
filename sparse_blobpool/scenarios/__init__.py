@@ -1,6 +1,6 @@
 """Simulation scenario runners."""
 
-from .baseline import (
+from sparse_blobpool.scenarios.baseline import (
     broadcast_transaction,
     build_simulator,
     run_baseline_scenario,
