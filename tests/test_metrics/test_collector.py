@@ -121,7 +121,11 @@ class TestMetricsCollector:
         sim.register_actor(actor)
 
         # Schedule and process an event to advance time
-        sim.schedule(Event(timestamp=2.0, target_id=ActorId("dummy"), payload=TimerPayload(TimerKind.SLOT_TICK)))
+        sim.schedule(
+            Event(
+                timestamp=2.0, target_id=ActorId("dummy"), payload=TimerPayload(TimerKind.SLOT_TICK)
+            )
+        )
         sim.run(until=3.0)
 
         # Take snapshot at time 2.0

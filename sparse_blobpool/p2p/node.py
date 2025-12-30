@@ -169,9 +169,7 @@ class Node(Actor):
 
             # Record metrics - origin node is always a provider with full blob
             if self._metrics is not None:
-                self._metrics.record_tx_seen(
-                    self._id, msg.tx_hash, Role.PROVIDER, msg.cell_mask
-                )
+                self._metrics.record_tx_seen(self._id, msg.tx_hash, Role.PROVIDER, msg.cell_mask)
 
             self._announce_tx(entry)
         except (RBFRejected, SenderLimitExceeded, PoolFull):

@@ -186,9 +186,7 @@ class MetricsCollector:
         for tx_hash, metrics in self.tx_metrics.items():
             if metrics.propagation_complete_time is None:
                 # Still propagating - record snapshot
-                full_count = sum(
-                    1 for mask in metrics.cell_masks.values() if mask == ALL_ONES
-                )
+                full_count = sum(1 for mask in metrics.cell_masks.values() if mask == ALL_ONES)
                 sample_count = len(metrics.nodes_seen) - full_count
 
                 # Check if reconstruction is possible (64+ distinct columns)
@@ -232,21 +230,15 @@ class MetricsCollector:
 
         # Compute derived metrics
         total_providers = sum(m.provider_count for m in self.tx_metrics.values())
-        total_roles = sum(
-            m.provider_count + m.sampler_count for m in self.tx_metrics.values()
-        )
+        total_roles = sum(m.provider_count + m.sampler_count for m in self.tx_metrics.values())
 
         # Bandwidth per blob (average)
-        bandwidth_per_blob = (
-            self._total_bytes / total_txs if total_txs > 0 else 0.0
-        )
+        bandwidth_per_blob = self._total_bytes / total_txs if total_txs > 0 else 0.0
 
         # Bandwidth reduction vs full propagation
         # Full propagation would send full blob to every node for every tx
         naive_bandwidth = FULL_BLOB_SIZE * self.node_count * total_txs
-        bandwidth_reduction = (
-            naive_bandwidth / self._total_bytes if self._total_bytes > 0 else 0.0
-        )
+        bandwidth_reduction = naive_bandwidth / self._total_bytes if self._total_bytes > 0 else 0.0
 
         return SimulationResults(
             # Bandwidth
@@ -260,13 +252,9 @@ class MetricsCollector:
                 if propagation_times
                 else 0.0
             ),
-            propagation_success_rate=(
-                len(propagation_times) / total_txs if total_txs > 0 else 0.0
-            ),
+            propagation_success_rate=(len(propagation_times) / total_txs if total_txs > 0 else 0.0),
             # Reliability
-            observed_provider_ratio=(
-                total_providers / total_roles if total_roles > 0 else 0.0
-            ),
+            observed_provider_ratio=(total_providers / total_roles if total_roles > 0 else 0.0),
             reconstruction_success_rate=(
                 reconstruction_successes / total_txs if total_txs > 0 else 0.0
             ),
