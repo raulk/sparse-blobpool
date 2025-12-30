@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor, EventPayload, TimerKind, TimerPayload
 from sparse_blobpool.core.types import ActorId
-from sparse_blobpool.protocol.messages import ProduceBlock
+from sparse_blobpool.protocol.commands import ProduceBlock
 
 if TYPE_CHECKING:
     from sparse_blobpool.core.simulator import Simulator

@@ -11,8 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class BandwidthSnapshot:
-    """Point-in-time bandwidth measurement."""
-
     timestamp: float
     total_bytes: int
     control_bytes: int
@@ -22,8 +20,6 @@ class BandwidthSnapshot:
 
 @dataclass
 class PropagationSnapshot:
-    """Point-in-time propagation state for a transaction."""
-
     timestamp: float
     tx_hash: TxHash
     nodes_seen: int
@@ -34,8 +30,6 @@ class PropagationSnapshot:
 
 @dataclass
 class SimulationResults:
-    """Derived metrics computed after simulation completes."""
-
     # Bandwidth efficiency
     total_bandwidth_bytes: int
     bandwidth_per_blob: float

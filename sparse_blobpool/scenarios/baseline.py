@@ -10,15 +10,15 @@ configured simulator with:
 from __future__ import annotations
 
 from sparse_blobpool.actors.block_producer import BlockProducer
+from sparse_blobpool.actors.honest import Node
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Event, Simulator
+from sparse_blobpool.core.topology import build_topology
 from sparse_blobpool.core.types import Address, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
-from sparse_blobpool.p2p.node import Node
-from sparse_blobpool.p2p.topology import build_topology
+from sparse_blobpool.protocol.commands import BroadcastTransaction
 from sparse_blobpool.protocol.constants import ALL_ONES
-from sparse_blobpool.protocol.messages import BroadcastTransaction
 
 
 def build_simulator(config: SimulationConfig | None = None) -> Simulator:
@@ -55,9 +55,9 @@ def build_simulator(config: SimulationConfig | None = None) -> Simulator:
 
     # Create and register Node actors
     nodes: list[Node] = []
-    for node_info in topology.nodes:
+    for actor_id, region in topology.regions.items():
         node = Node(
-            actor_id=node_info.actor_id,
+            actor_id=actor_id,
             simulator=simulator,
             config=config,
             custody_columns=config.custody_columns,
@@ -67,8 +67,8 @@ def build_simulator(config: SimulationConfig | None = None) -> Simulator:
         nodes.append(node)
 
         # Register node with network and metrics for region tracking
-        network.register_node(node_info.actor_id, node_info.region)
-        metrics.register_node(node_info.actor_id, node_info.region)
+        network.register_node(actor_id, region)
+        metrics.register_node(actor_id, region)
 
     # Build node lookup for peer connections
     node_lookup = {node.id: node for node in nodes}

@@ -3,11 +3,11 @@
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from sparse_blobpool.actors.honest import Node, Role
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
-from sparse_blobpool.p2p.node import Node, Role
 
 
 def make_node(

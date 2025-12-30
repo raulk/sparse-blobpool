@@ -3,18 +3,12 @@
 from dataclasses import dataclass, field
 
 from sparse_blobpool.core.actor import Message
-from sparse_blobpool.core.types import ActorId, Address, TxHash
+from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.protocol.constants import CELL_SIZE, MESSAGE_OVERHEAD
 
 
 @dataclass
 class NewPooledTransactionHashes(Message):
-    """Announce new transactions to a peer (eth/71 0x08).
-
-    For type 3 (blob) transactions, cell_mask indicates which columns
-    the announcer has available. ALL_ONES means full blob availability.
-    """
-
     types: bytes  # 1 byte per tx (3 = blob tx)
     sizes: list[int]  # transaction sizes in bytes
     hashes: list[TxHash]  # 32 bytes each
@@ -33,10 +27,8 @@ class NewPooledTransactionHashes(Message):
 
 @dataclass
 class TxBody:
-    """Transaction body without blob data (for type-3 txs, blobs are elided)."""
-
     tx_hash: TxHash
-    tx_bytes: int  # size of tx envelope without blobs
+    tx_bytes: int
 
     @property
     def size_bytes(self) -> int:
@@ -45,11 +37,6 @@ class TxBody:
 
 @dataclass
 class GetPooledTransactions(Message):
-    """Request transaction bodies (eth/71 0x09).
-
-    For type-3 txs, responses elide blob payloads.
-    """
-
     tx_hashes: list[TxHash]
 
     @property
@@ -59,11 +46,6 @@ class GetPooledTransactions(Message):
 
 @dataclass
 class PooledTransactions(Message):
-    """Response with transaction bodies (eth/71 0x0A).
-
-    For type-3 txs, blob payloads are elided (set to None).
-    """
-
     transactions: list[TxBody | None]  # None for unavailable txs
 
     @property
@@ -73,8 +55,6 @@ class PooledTransactions(Message):
 
 @dataclass
 class Cell:
-    """A single cell (2048 bytes) with its KZG proof."""
-
     data: bytes = field(repr=False)  # CELL_SIZE bytes
     proof: bytes = field(repr=False)  # 48 bytes KZG proof
 
@@ -85,11 +65,6 @@ class Cell:
 
 @dataclass
 class GetCells(Message):
-    """Request specific cells for blob transactions (eth/71 0x12).
-
-    cell_mask is a uint128 bitmap indicating which column indices are needed.
-    """
-
     tx_hashes: list[TxHash]
     cell_mask: int  # uint128 bitmap of requested columns
 
@@ -100,12 +75,6 @@ class GetCells(Message):
 
 @dataclass
 class Cells(Message):
-    """Response with requested cells (eth/71 0x13).
-
-    cells is a list of lists: cells[tx_index][column_index].
-    Only columns indicated in cell_mask are populated.
-    """
-
     tx_hashes: list[TxHash]
     cells: list[list[Cell | None]]  # per-tx, per-column
     cell_mask: int  # actual columns provided (uint128)
@@ -123,8 +92,6 @@ class Cells(Message):
 
 @dataclass
 class Block:
-    """A block containing blob transaction inclusions."""
-
     slot: int
     proposer: ActorId
     blob_tx_hashes: list[TxHash]
@@ -132,51 +99,9 @@ class Block:
 
 @dataclass
 class BlockBroadcast(Message):
-    """Announce a new block with included blob transactions."""
-
     block: Block
 
     @property
     def size_bytes(self) -> int:
         # slot (8) + proposer (~32) + header overhead (24) + hashes
         return 64 + len(self.block.blob_tx_hashes) * 32
-
-
-@dataclass
-class BroadcastTransaction(Message):
-    """Event to inject a new transaction into a node's pool and announce it.
-
-    This is not a network message but a local event used to inject transactions
-    into the simulation. The receiving node will add the tx to its pool and
-    announce to all peers as a provider.
-    """
-
-    tx_hash: TxHash
-    tx_sender: Address
-    nonce: int
-    gas_fee_cap: int
-    gas_tip_cap: int
-    blob_gas_price: int
-    tx_size: int
-    blob_count: int
-    cell_mask: int  # Cells the origin has (ALL_ONES for full blob)
-
-    @property
-    def size_bytes(self) -> int:
-        return 0  # Local event, not transmitted over network
-
-
-@dataclass
-class ProduceBlock(Message):
-    """Request a node to produce a block for a given slot.
-
-    Sent by BlockProducer to the selected proposer node. The node will
-    select transactions from its pool, create the block, and broadcast
-    the BlockAnnouncement to all peers.
-    """
-
-    slot: int
-
-    @property
-    def size_bytes(self) -> int:
-        return 0  # Local event, not transmitted over network

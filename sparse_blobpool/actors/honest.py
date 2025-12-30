@@ -16,17 +16,16 @@ from sparse_blobpool.pool.blobpool import (
     RBFRejected,
     SenderLimitExceeded,
 )
+from sparse_blobpool.protocol.commands import BroadcastTransaction, ProduceBlock
 from sparse_blobpool.protocol.constants import ALL_ONES
 from sparse_blobpool.protocol.messages import (
     Block,
     BlockBroadcast,
-    BroadcastTransaction,
     Cells,
     GetCells,
     GetPooledTransactions,
     NewPooledTransactionHashes,
     PooledTransactions,
-    ProduceBlock,
 )
 
 if TYPE_CHECKING:

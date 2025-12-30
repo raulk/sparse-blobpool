@@ -2,12 +2,12 @@
 
 import pytest
 
+from sparse_blobpool.actors.honest import Node
 from sparse_blobpool.config import InclusionPolicy, SimulationConfig
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, Address, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
-from sparse_blobpool.p2p.node import Node
 from sparse_blobpool.pool.blobpool import BlobTxEntry
 from sparse_blobpool.protocol.constants import ALL_ONES
 
@@ -426,7 +426,7 @@ class TestNodeBlockHandling:
         node.pool.add(tx)
 
         # Manually add same tx as pending on node2
-        from sparse_blobpool.p2p.node import PendingTx, Role, TxState
+        from sparse_blobpool.actors.honest import PendingTx, Role, TxState
 
         pending = PendingTx(
             tx_hash=tx.tx_hash,

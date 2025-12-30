@@ -1,10 +1,10 @@
 """Tests for the MetricsCollector."""
 
+from sparse_blobpool.actors.honest import Role
 from sparse_blobpool.config import Region
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
-from sparse_blobpool.p2p.node import Role
 from sparse_blobpool.protocol.constants import ALL_ONES
 
 

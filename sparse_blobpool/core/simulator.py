@@ -7,19 +7,15 @@ from dataclasses import dataclass, field
 from random import Random
 from typing import TYPE_CHECKING, TypeVar
 
-from sparse_blobpool.core.actor import SendRequest
-from sparse_blobpool.core.types import NETWORK_ACTOR_ID
-
 if TYPE_CHECKING:
     from sparse_blobpool.actors.block_producer import BlockProducer
+    from sparse_blobpool.actors.honest import Node
     from sparse_blobpool.core.actor import Actor, EventPayload
     from sparse_blobpool.core.network import Network
+    from sparse_blobpool.core.topology import Topology
     from sparse_blobpool.core.types import ActorId
     from sparse_blobpool.metrics.collector import MetricsCollector
-    from sparse_blobpool.p2p.node import Node
-    from sparse_blobpool.p2p.topology import TopologyResult
-
-    from ..metrics.results import SimulationResults
+    from sparse_blobpool.metrics.results import SimulationResults
 
 ActorT = TypeVar("ActorT", bound="Actor")
 
@@ -54,7 +50,7 @@ class Simulator:
 
         self._network: Network | None = None
         self._block_producer: BlockProducer | None = None
-        self._topology: TopologyResult | None = None
+        self._topology: Topology | None = None
         self._metrics: MetricsCollector | None = None
 
     @property
@@ -96,7 +92,7 @@ class Simulator:
         return self._block_producer
 
     @property
-    def topology(self) -> TopologyResult:
+    def topology(self) -> Topology:
         if self._topology is None:
             raise RuntimeError("Simulator not configured with topology")
         return self._topology
@@ -145,17 +141,10 @@ class Simulator:
             self._events_processed += 1
 
     def _dispatch_event(self, event: Event) -> None:
-        if event.target_id == NETWORK_ACTOR_ID:
-            if self._network is None:
-                raise RuntimeError("Network not configured")
-            if not isinstance(event.payload, SendRequest):
-                raise RuntimeError(f"Network received non-SendRequest: {type(event.payload)}")
-            self._network.handle_send_request(event.payload)
-        else:
-            if event.target_id not in self._actors:
-                raise RuntimeError(f"Event targeted unknown actor: {event.target_id}")
-            actor = self._actors[event.target_id]
-            actor.on_event(event.payload)
+        if event.target_id not in self._actors:
+            raise RuntimeError(f"Event targeted unknown actor: {event.target_id}")
+        actor = self._actors[event.target_id]
+        actor.on_event(event.payload)
 
     def pending_event_count(self) -> int:
         return len(self._event_queue)

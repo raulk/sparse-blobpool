@@ -5,19 +5,21 @@ from random import Random
 import pytest
 
 from sparse_blobpool.config import Region, SimulationConfig, TopologyStrategy
-from sparse_blobpool.p2p.topology import NodeInfo, TopologyResult, build_topology
+from sparse_blobpool.core.topology import Topology, build_topology
 
 
-class TestNodeInfo:
-    def test_node_info_fields(self) -> None:
-        from sparse_blobpool.core.types import ActorId
+def peers_of(topology: Topology, node_id: str) -> list[str]:
+    """Get peers for a node from edges list."""
+    peers = []
+    for a, b in topology.edges:
+        if a == node_id:
+            peers.append(b)
+        elif b == node_id:
+            peers.append(a)
+    return peers
 
-        node = NodeInfo(actor_id=ActorId("node-0001"), region=Region.NA)
-        assert node.actor_id == "node-0001"
-        assert node.region == Region.NA
 
-
-class TestTopologyResult:
+class TestTopology:
     def test_peers_of_returns_connected_nodes(self) -> None:
         from sparse_blobpool.core.types import ActorId
 
@@ -30,10 +32,12 @@ class TestTopologyResult:
             (ActorId("node-0"), ActorId("node-1")),
             (ActorId("node-0"), ActorId("node-2")),
         ]
-        result = TopologyResult(regions=regions, edges=edges)
+        result = Topology(regions=regions, edges=edges)
 
-        peers = result.peers_of(ActorId("node-0"))
-        assert set(peers) == {ActorId("node-1"), ActorId("node-2")}
+        assert set(peers_of(result, ActorId("node-0"))) == {
+            ActorId("node-1"),
+            ActorId("node-2"),
+        }
 
     def test_peers_of_handles_bidirectional(self) -> None:
         from sparse_blobpool.core.types import ActorId
@@ -43,47 +47,24 @@ class TestTopologyResult:
             ActorId("node-1"): Region.NA,
         }
         edges = [(ActorId("node-0"), ActorId("node-1"))]
-        result = TopologyResult(regions=regions, edges=edges)
+        result = Topology(regions=regions, edges=edges)
 
         # Both directions should work
-        assert ActorId("node-1") in result.peers_of(ActorId("node-0"))
-        assert ActorId("node-0") in result.peers_of(ActorId("node-1"))
+        assert ActorId("node-1") in peers_of(result, ActorId("node-0"))
+        assert ActorId("node-0") in peers_of(result, ActorId("node-1"))
 
-    def test_nodes_property_returns_node_info_list(self) -> None:
-        """The nodes property provides backward compatibility."""
+    def test_region_lookup(self) -> None:
         from sparse_blobpool.core.types import ActorId
 
         regions = {
             ActorId("node-0"): Region.NA,
             ActorId("node-1"): Region.EU,
         }
-        result = TopologyResult(regions=regions, edges=[])
+        result = Topology(regions=regions, edges=[])
 
-        nodes = result.nodes
-        assert len(nodes) == 2
-        assert all(isinstance(n, NodeInfo) for n in nodes)
-
-    def test_region_for_returns_region(self) -> None:
-        """region_for returns the region for a known node."""
-        from sparse_blobpool.core.types import ActorId
-
-        regions = {
-            ActorId("node-0"): Region.NA,
-            ActorId("node-1"): Region.EU,
-        }
-        result = TopologyResult(regions=regions, edges=[])
-
-        assert result.region_for(ActorId("node-0")) == Region.NA
-        assert result.region_for(ActorId("node-1")) == Region.EU
-
-    def test_region_for_returns_none_for_unknown(self) -> None:
-        """region_for returns None for unknown nodes."""
-        from sparse_blobpool.core.types import ActorId
-
-        regions = {ActorId("node-0"): Region.NA}
-        result = TopologyResult(regions=regions, edges=[])
-
-        assert result.region_for(ActorId("unknown")) is None
+        assert result.regions.get(ActorId("node-0")) == Region.NA
+        assert result.regions.get(ActorId("node-1")) == Region.EU
+        assert result.regions.get(ActorId("unknown")) is None
 
 
 class TestBuildTopology:
@@ -93,7 +74,7 @@ class TestBuildTopology:
 
         result = build_topology(config, rng)
 
-        assert len(result.nodes) == 100
+        assert len(result.regions) == 100
 
     def test_region_distribution_approximately_matches_config(self) -> None:
         config = SimulationConfig(
@@ -111,8 +92,8 @@ class TestBuildTopology:
 
         # Count regions
         region_counts = {Region.NA: 0, Region.EU: 0, Region.AS: 0}
-        for node in result.nodes:
-            region_counts[node.region] += 1
+        for region in result.regions.values():
+            region_counts[region] += 1
 
         # Check within reasonable tolerance (±5%)
         assert 350 <= region_counts[Region.NA] <= 450
@@ -125,9 +106,9 @@ class TestBuildTopology:
         result1 = build_topology(config, Random(42))
         result2 = build_topology(config, Random(42))
 
-        # Same nodes
-        assert [n.actor_id for n in result1.nodes] == [n.actor_id for n in result2.nodes]
-        assert [n.region for n in result1.nodes] == [n.region for n in result2.nodes]
+        # Same nodes and regions
+        assert list(result1.regions.keys()) == list(result2.regions.keys())
+        assert list(result1.regions.values()) == list(result2.regions.values())
 
     def test_different_seeds_produce_different_results(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
@@ -136,8 +117,8 @@ class TestBuildTopology:
         result2 = build_topology(config, Random(123))
 
         # Regions should differ (with high probability)
-        regions1 = [n.region for n in result1.nodes]
-        regions2 = [n.region for n in result2.nodes]
+        regions1 = list(result1.regions.values())
+        regions2 = list(result2.regions.values())
         assert regions1 != regions2
 
 
@@ -215,14 +196,11 @@ class TestGeographicKademlia:
 
         result = build_topology(config, rng)
 
-        # Build region map
-        node_regions = {node.actor_id: node.region for node in result.nodes}
-
         # Count same-region vs cross-region edges
         same_region = 0
         cross_region = 0
         for a, b in result.edges:
-            if node_regions[a] == node_regions[b]:
+            if result.regions[a] == result.regions[b]:
                 same_region += 1
             else:
                 cross_region += 1
@@ -255,7 +233,7 @@ class TestGeographicKademlia:
 
         result = build_topology(config, rng)
 
-        assert len(result.nodes) == 0
+        assert len(result.regions) == 0
         assert len(result.edges) == 0
 
 
@@ -272,7 +250,7 @@ class TestLargeScale:
 
         result = build_topology(config, rng)
 
-        assert len(result.nodes) == 2000
+        assert len(result.regions) == 2000
 
         # Verify connectivity - each node should have approximately mesh_degree peers
         # In Kademlia, edges are bidirectional so degree can be up to 2x mesh_degree
