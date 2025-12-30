@@ -1,16 +1,32 @@
-"""Local simulation events (not transmitted over network)."""
+"""Commands for local simulation events (not transmitted over network).
+
+Commands are local events that actors send to themselves or receive from
+the simulation infrastructure. Unlike Messages, Commands are never transmitted
+over the network.
+"""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sparse_blobpool.core.actor import Message
+from sparse_blobpool.core.base import Command
 
 if TYPE_CHECKING:
-    from sparse_blobpool.core.types import Address, TxHash
+    from sparse_blobpool.core.types import Address, RequestId, TxHash
+
+# Re-export Command for convenience
+__all__ = [
+    "BroadcastTransaction",
+    "Command",
+    "ProduceBlock",
+    "ProviderObservationTimeout",
+    "RequestTimeout",
+    "SlotTick",
+    "TxCleanup",
+]
 
 
 @dataclass
-class BroadcastTransaction(Message):
+class BroadcastTransaction(Command):
     """Inject a new transaction into a node's pool and announce it.
 
     This is not a network message but a local event used to inject transactions
@@ -34,7 +50,7 @@ class BroadcastTransaction(Message):
 
 
 @dataclass
-class ProduceBlock(Message):
+class ProduceBlock(Command):
     """Request a node to produce a block for a given slot.
 
     Sent by BlockProducer to the selected proposer node. The node will
@@ -43,6 +59,48 @@ class ProduceBlock(Message):
     """
 
     slot: int
+
+    @property
+    def size_bytes(self) -> int:
+        return 0
+
+
+@dataclass
+class SlotTick(Command):
+    """Periodic slot boundary tick for block production."""
+
+    @property
+    def size_bytes(self) -> int:
+        return 0
+
+
+@dataclass
+class RequestTimeout(Command):
+    """Timeout for a pending request (tx body or cells)."""
+
+    request_id: RequestId
+
+    @property
+    def size_bytes(self) -> int:
+        return 0
+
+
+@dataclass
+class ProviderObservationTimeout(Command):
+    """Timeout waiting for provider announcements before fetching."""
+
+    tx_hash: TxHash
+
+    @property
+    def size_bytes(self) -> int:
+        return 0
+
+
+@dataclass
+class TxCleanup(Command):
+    """Delayed cleanup of a transaction after block inclusion."""
+
+    tx_hash: TxHash
 
     @property
     def size_bytes(self) -> int:

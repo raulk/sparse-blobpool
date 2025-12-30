@@ -8,7 +8,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from sparse_blobpool.config import InclusionPolicy
-from sparse_blobpool.core.actor import Actor, EventPayload, Message, TimerKind, TimerPayload
+from sparse_blobpool.core.actor import Actor, EventPayload, Message
 from sparse_blobpool.pool.blobpool import (
     Blobpool,
     BlobTxEntry,
@@ -16,7 +16,13 @@ from sparse_blobpool.pool.blobpool import (
     RBFRejected,
     SenderLimitExceeded,
 )
-from sparse_blobpool.protocol.commands import BroadcastTransaction, ProduceBlock
+from sparse_blobpool.protocol.commands import (
+    BroadcastTransaction,
+    ProduceBlock,
+    ProviderObservationTimeout,
+    RequestTimeout,
+    TxCleanup,
+)
 from sparse_blobpool.protocol.constants import ALL_ONES
 from sparse_blobpool.protocol.messages import (
     Block,
@@ -123,10 +129,18 @@ class Node(Actor):
 
     def on_event(self, payload: EventPayload) -> None:
         match payload:
-            case BroadcastTransaction() as msg:
-                self._handle_broadcast_transaction(msg)
-            case ProduceBlock() as msg:
-                self._handle_produce_block(msg)
+            # Commands
+            case BroadcastTransaction() as cmd:
+                self._handle_broadcast_transaction(cmd)
+            case ProduceBlock() as cmd:
+                self._handle_produce_block(cmd)
+            case RequestTimeout() as cmd:
+                self._handle_request_timeout(cmd)
+            case ProviderObservationTimeout() as cmd:
+                self._handle_provider_observation_timeout(cmd)
+            case TxCleanup() as cmd:
+                self._handle_tx_cleanup(cmd)
+            # Messages
             case NewPooledTransactionHashes() as msg:
                 self._handle_announcement(msg)
             case GetPooledTransactions() as msg:
@@ -139,31 +153,20 @@ class Node(Actor):
                 self._handle_cells(msg)
             case BlockBroadcast() as msg:
                 self._handle_block_announcement(msg)
-            case TimerPayload(kind=TimerKind.REQUEST_TIMEOUT, context=ctx):
-                self._handle_request_timeout(ctx)
-            case TimerPayload(kind=TimerKind.PROVIDER_OBSERVATION_TIMEOUT, context=ctx):
-                self._handle_provider_observation_timeout(ctx)
-            case TimerPayload(kind=TimerKind.TX_CLEANUP, context=ctx):
-                self._handle_tx_cleanup(ctx)
             case Message():
                 pass  # Unknown message type
 
-    def _handle_broadcast_transaction(self, msg: BroadcastTransaction) -> None:
-        """Handle a local broadcast transaction event.
-
-        Creates a pool entry for the transaction and announces to all peers.
-        Used for injecting transactions into the simulation.
-        """
+    def _handle_broadcast_transaction(self, cmd: BroadcastTransaction) -> None:
         entry = BlobTxEntry(
-            tx_hash=msg.tx_hash,
-            sender=msg.tx_sender,
-            nonce=msg.nonce,
-            gas_fee_cap=msg.gas_fee_cap,
-            gas_tip_cap=msg.gas_tip_cap,
-            blob_gas_price=msg.blob_gas_price,
-            tx_size=msg.tx_size,
-            blob_count=msg.blob_count,
-            cell_mask=msg.cell_mask,
+            tx_hash=cmd.tx_hash,
+            sender=cmd.tx_sender,
+            nonce=cmd.nonce,
+            gas_fee_cap=cmd.gas_fee_cap,
+            gas_tip_cap=cmd.gas_tip_cap,
+            blob_gas_price=cmd.blob_gas_price,
+            tx_size=cmd.tx_size,
+            blob_count=cmd.blob_count,
+            cell_mask=cmd.cell_mask,
             received_at=self._simulator.current_time,
         )
 
@@ -171,7 +174,7 @@ class Node(Actor):
             self._pool.add(entry)
 
             # Record metrics - origin node is always a provider with full blob
-            self._metrics.record_tx_seen(self._id, msg.tx_hash, Role.PROVIDER, msg.cell_mask)
+            self._metrics.record_tx_seen(self._id, cmd.tx_hash, Role.PROVIDER, cmd.cell_mask)
 
             self._announce_tx(entry)
         except (RBFRejected, SenderLimitExceeded, PoolFull):
@@ -387,7 +390,6 @@ class Node(Actor):
         self._schedule_request_timeout(request_id)
 
     def _request_custody_cells(self, tx_hash: TxHash, from_peer: ActorId) -> None:
-        """Request custody-aligned cells plus extra random columns (sampler role)."""
         pending = self._pending_txs.get(tx_hash)
         if pending is None:
             return
@@ -543,28 +545,19 @@ class Node(Actor):
         return request_id
 
     def _schedule_request_timeout(self, request_id: RequestId) -> None:
-        self.schedule_timer(
-            delay=self._config.request_timeout,
-            kind=TimerKind.REQUEST_TIMEOUT,
-            context={"request_id": request_id},
+        self.schedule_command(
+            self._config.request_timeout,
+            RequestTimeout(request_id=request_id),
         )
 
     def _schedule_provider_observation_timeout(self, tx_hash: TxHash) -> None:
-        self.schedule_timer(
-            delay=self._config.provider_observation_timeout,
-            kind=TimerKind.PROVIDER_OBSERVATION_TIMEOUT,
-            context={"tx_hash": tx_hash},
+        self.schedule_command(
+            self._config.provider_observation_timeout,
+            ProviderObservationTimeout(tx_hash=tx_hash),
         )
 
-    def _handle_request_timeout(self, context: dict[str, object]) -> None:
-        from sparse_blobpool.core.types import RequestId
-
-        request_id = context.get("request_id")
-        if not isinstance(request_id, int):
-            return
-
-        request_id = RequestId(request_id)
-        request = self._pending_requests.pop(request_id, None)
+    def _handle_request_timeout(self, cmd: RequestTimeout) -> None:
+        request = self._pending_requests.pop(cmd.request_id, None)
         if request is None:
             return  # Already completed
 
@@ -588,15 +581,8 @@ class Node(Actor):
             # Cell request timeout - try another peer or give up
             self._pending_txs.pop(request.tx_hash, None)
 
-    def _handle_provider_observation_timeout(self, context: dict[str, object]) -> None:
-        tx_hash = context.get("tx_hash")
-        if not isinstance(tx_hash, str):
-            return
-
-        from sparse_blobpool.core.types import TxHash
-
-        tx_hash = TxHash(tx_hash)
-        pending = self._pending_txs.get(tx_hash)
+    def _handle_provider_observation_timeout(self, cmd: ProviderObservationTimeout) -> None:
+        pending = self._pending_txs.get(cmd.tx_hash)
         if pending is None:
             return
 
@@ -607,12 +593,12 @@ class Node(Actor):
         if pending.provider_peers or pending.sampler_peers:
             if pending.role == Role.PROVIDER:
                 target = next(iter(pending.provider_peers or pending.sampler_peers))
-                self._start_provider_fetch(tx_hash, target)
+                self._start_provider_fetch(cmd.tx_hash, target)
             else:
-                self._start_sampler_fetch(tx_hash)
+                self._start_sampler_fetch(cmd.tx_hash)
         else:
             # No peers, drop the tx
-            self._pending_txs.pop(tx_hash, None)
+            self._pending_txs.pop(cmd.tx_hash, None)
 
     def _handle_block_announcement(self, msg: BlockBroadcast) -> None:
         for tx_hash in msg.block.blob_tx_hashes:
@@ -629,30 +615,19 @@ class Node(Actor):
     def _schedule_tx_cleanup(self, tx_hash: TxHash) -> None:
         # Delay cleanup slightly to allow block propagation
         cleanup_delay = 2.0  # seconds
-        self.schedule_timer(
-            delay=cleanup_delay,
-            kind=TimerKind.TX_CLEANUP,
-            context={"tx_hash": tx_hash},
-        )
+        self.schedule_command(cleanup_delay, TxCleanup(tx_hash=tx_hash))
 
-    def _handle_tx_cleanup(self, context: dict[str, object]) -> None:
-        tx_hash = context.get("tx_hash")
-        if not isinstance(tx_hash, str):
-            return
+    def _handle_tx_cleanup(self, cmd: TxCleanup) -> None:
+        self._pool.remove(cmd.tx_hash)
 
-        from sparse_blobpool.core.types import TxHash
-
-        tx_hash = TxHash(tx_hash)
-        self._pool.remove(tx_hash)
-
-    def _handle_produce_block(self, msg: ProduceBlock) -> None:
+    def _handle_produce_block(self, cmd: ProduceBlock) -> None:
         selected_txs = self._select_blobs_for_block()
 
         if not selected_txs:
             return
 
         block = Block(
-            slot=msg.slot,
+            slot=cmd.slot,
             proposer=self._id,
             blob_tx_hashes=[tx.tx_hash for tx in selected_txs],
         )
