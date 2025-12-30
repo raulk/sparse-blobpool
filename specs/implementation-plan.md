@@ -182,9 +182,9 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 4.1 Topology generation
 
-- [ ] Implement `RandomGraph` strategy
-- [ ] Implement `GeographicKademlia` strategy
-- [ ] Assign regions based on config distribution
+- [x] Implement `RandomGraph` strategy
+- [x] Implement `GeographicKademlia` strategy
+- [x] Assign regions based on config distribution
 
 #### Files
 
@@ -196,10 +196,10 @@ uv run pytest tests/test_core/test_simulator.py -v
 
 ### 4.2 Simulation runner
 
-- [ ] Implement `build_simulation()` factory
-- [ ] Register all actors (Network, Nodes, BlockProducer)
-- [ ] Establish peer connections per topology
-- [ ] Inject initial transactions
+- [x] Implement `build_simulation()` factory
+- [x] Register all actors (Network, Nodes, BlockProducer)
+- [x] Establish peer connections per topology
+- [x] Inject initial transactions
 
 #### Files
 
