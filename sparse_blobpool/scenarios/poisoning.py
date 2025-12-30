@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING
 
 from ..adversaries.poisoning import TargetedPoisoningAdversary, TargetedPoisoningConfig
 from ..config import SimulationConfig
-from ..core.simulator import Event
+from ..core.simulator import Event, Simulator
 from ..core.types import ActorId
-from .baseline import SimulationResult, broadcast_transaction, build_simulation
+from .baseline import broadcast_transaction, build_simulator
 
 if TYPE_CHECKING:
     from ..p2p.node import Node
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class PoisoningAttackResult:
     """Results from targeted poisoning attack scenario."""
 
-    simulation: SimulationResult
+    simulator: Simulator
     adversary: TargetedPoisoningAdversary
     victim_node: Node
     poison_txs_injected: int
@@ -59,11 +59,11 @@ def run_poisoning_attack(
         run_duration = config.duration
 
     # Build base simulation
-    result = build_simulation(config)
+    sim = build_simulator(config)
 
     # Select victim (middle node for reproducibility)
-    victim_idx = len(result.nodes) // 2
-    victim_node = result.nodes[victim_idx]
+    victim_idx = len(sim.nodes) // 2
+    victim_node = sim.nodes[victim_idx]
 
     # Set up attack config with victim
     if attack_config is None:
@@ -88,8 +88,8 @@ def run_poisoning_attack(
 
     # Inject honest transactions first
     for _ in range(num_honest_transactions):
-        origin_idx = result.simulator.rng.randint(0, len(result.nodes) - 1)
-        broadcast_transaction(result, result.nodes[origin_idx])
+        origin_idx = sim.rng.randint(0, len(sim.nodes) - 1)
+        broadcast_transaction(sim, sim.nodes[origin_idx])
 
     # Create controlled nodes (fake attacker nodes)
     controlled_nodes = [
@@ -100,14 +100,14 @@ def run_poisoning_attack(
     adversary_id = ActorId("poisoning_adversary")
     adversary = TargetedPoisoningAdversary(
         actor_id=adversary_id,
-        simulator=result.simulator,
+        simulator=sim,
         controlled_nodes=controlled_nodes,
         attack_config=attack_config,
     )
-    result.simulator.register_actor(adversary)
+    sim.register_actor(adversary)
 
     # Start block production
-    result.block_producer.start()
+    sim.block_producer.start()
 
     # Schedule attack start
     start_event = Event(
@@ -115,7 +115,7 @@ def run_poisoning_attack(
         target_id=adversary_id,
         payload=_AttackStartPayload(),
     )
-    result.simulator.schedule(start_event)
+    sim.schedule(start_event)
 
     # Override adversary's on_event to handle start
     original_on_event = adversary.on_event
@@ -129,7 +129,7 @@ def run_poisoning_attack(
     adversary.on_event = _patched_on_event  # type: ignore[method-assign]
 
     # Run simulation
-    result.simulator.run(run_duration)
+    sim.run(run_duration)
 
     # Analyze victim's pool
     victim_pool_size = victim_node.pool.tx_count
@@ -141,7 +141,7 @@ def run_poisoning_attack(
     )
 
     return PoisoningAttackResult(
-        simulation=result,
+        simulator=sim,
         adversary=adversary,
         victim_node=victim_node,
         poison_txs_injected=adversary._current_nonce,
@@ -189,12 +189,12 @@ def main() -> None:
     print(f"Poison txs in victim pool: {result.victim_pool_poison_count}")
 
     # Check other nodes for comparison
-    other_pools = [n.pool.tx_count for n in result.simulation.nodes if n != result.victim_node]
+    other_pools = [n.pool.tx_count for n in result.simulator.nodes if n != result.victim_node]
     avg_other_pool = sum(other_pools) / len(other_pools) if other_pools else 0
     print(f"Average pool size (other nodes): {avg_other_pool:.1f}")
 
-    print(f"\nEvents processed: {result.simulation.simulator.events_processed}")
-    print(f"Messages delivered: {result.simulation.network.messages_delivered}")
+    print(f"\nEvents processed: {result.simulator.events_processed}")
+    print(f"Messages delivered: {result.simulator.network.messages_delivered}")
 
     # Attack effectiveness
     if result.victim_pool_size > 0:
@@ -203,7 +203,7 @@ def main() -> None:
 
     # Finalize metrics
     print("\n=== Metrics Analysis ===")
-    metrics = result.simulation.finalize_metrics()
+    metrics = result.simulator.finalize_metrics()
     print(f"Total bandwidth: {metrics.total_bandwidth_bytes / 1024:.1f} KB")
     print(f"Propagation success rate: {metrics.propagation_success_rate * 100:.1f}%")
 
@@ -221,7 +221,7 @@ def main() -> None:
             "poison_txs_injected": result.poison_txs_injected,
             "victim_pool_size": result.victim_pool_size,
             "victim_pool_poison_count": result.victim_pool_poison_count,
-            "messages_delivered": result.simulation.network.messages_delivered,
+            "messages_delivered": result.simulator.network.messages_delivered,
         },
         "metrics": metrics.to_dict(),
     }

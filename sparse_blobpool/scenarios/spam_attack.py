@@ -10,16 +10,16 @@ from dataclasses import dataclass
 
 from ..adversaries.spam import SpamAdversary, SpamAttackConfig
 from ..config import SimulationConfig
-from ..core.simulator import Event
+from ..core.simulator import Event, Simulator
 from ..core.types import ActorId
-from .baseline import SimulationResult, broadcast_transaction, build_simulation
+from .baseline import broadcast_transaction, build_simulator
 
 
 @dataclass
 class SpamAttackResult:
     """Results from spam attack scenario."""
 
-    simulation: SimulationResult
+    simulator: Simulator
     adversary: SpamAdversary
     spam_txs_injected: int
     spam_txs_propagated: int
@@ -60,28 +60,28 @@ def run_spam_attack(
         run_duration = config.duration
 
     # Build base simulation
-    result = build_simulation(config)
+    sim = build_simulator(config)
 
     # Inject honest transactions first
     for _ in range(num_honest_transactions):
-        origin_idx = result.simulator.rng.randint(0, len(result.nodes) - 1)
-        broadcast_transaction(result, result.nodes[origin_idx])
+        origin_idx = sim.rng.randint(0, len(sim.nodes) - 1)
+        broadcast_transaction(sim, sim.nodes[origin_idx])
 
     # Create and register spam adversary
     adversary_id = ActorId("spam_adversary")
-    all_node_ids = [node.id for node in result.nodes]
+    all_node_ids = [node.id for node in sim.nodes]
 
     adversary = SpamAdversary(
         actor_id=adversary_id,
-        simulator=result.simulator,
+        simulator=sim,
         controlled_nodes=[ActorId("fake_node_0")],  # Single fake node
         attack_config=attack_config,
         all_nodes=all_node_ids,
     )
-    result.simulator.register_actor(adversary)
+    sim.register_actor(adversary)
 
     # Start block production
-    result.block_producer.start()
+    sim.block_producer.start()
 
     # Schedule attack start
     start_event = Event(
@@ -89,7 +89,7 @@ def run_spam_attack(
         target_id=adversary_id,
         payload=_AttackStartPayload(),
     )
-    result.simulator.schedule(start_event)
+    sim.schedule(start_event)
 
     # Override adversary's on_event to handle start
     original_on_event = adversary.on_event
@@ -103,7 +103,7 @@ def run_spam_attack(
     adversary.on_event = _patched_on_event  # type: ignore[method-assign]
 
     # Run simulation
-    result.simulator.run(run_duration)
+    sim.run(run_duration)
 
     # Gather results
     spam_txs_injected = adversary._spam_counter
@@ -111,7 +111,7 @@ def run_spam_attack(
     honest_txs_evicted = 0  # Would need tracking in blobpool
 
     return SpamAttackResult(
-        simulation=result,
+        simulator=sim,
         adversary=adversary,
         spam_txs_injected=spam_txs_injected,
         spam_txs_propagated=spam_txs_propagated,
@@ -155,13 +155,13 @@ def main() -> None:
     print(f"Spam txs injected: {result.spam_txs_injected}")
     print(f"Spam txs propagated: {result.spam_txs_propagated}")
     print(f"Honest txs evicted: {result.honest_txs_evicted}")
-    print(f"Events processed: {result.simulation.simulator.events_processed}")
-    print(f"Messages delivered: {result.simulation.network.messages_delivered}")
-    print(f"Total bytes: {result.simulation.network.total_bytes / 1024:.1f} KB")
+    print(f"Events processed: {result.simulator.events_processed}")
+    print(f"Messages delivered: {result.simulator.network.messages_delivered}")
+    print(f"Total bytes: {result.simulator.network.total_bytes / 1024:.1f} KB")
 
     # Finalize metrics
     print("\n=== Metrics Analysis ===")
-    metrics = result.simulation.finalize_metrics()
+    metrics = result.simulator.finalize_metrics()
     print(f"Total bandwidth: {metrics.total_bandwidth_bytes / 1024:.1f} KB")
     print(f"Bandwidth per blob: {metrics.bandwidth_per_blob / 1024:.1f} KB")
 
@@ -176,8 +176,8 @@ def main() -> None:
         },
         "results": {
             "spam_txs_injected": result.spam_txs_injected,
-            "messages_delivered": result.simulation.network.messages_delivered,
-            "total_bytes": result.simulation.network.total_bytes,
+            "messages_delivered": result.simulator.network.messages_delivered,
+            "total_bytes": result.simulator.network.total_bytes,
         },
         "metrics": metrics.to_dict(),
     }
