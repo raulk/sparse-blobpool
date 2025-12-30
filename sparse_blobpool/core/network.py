@@ -1,4 +1,4 @@
-"""Network actor for message delivery with latency modeling."""
+"""Network component for message delivery with latency modeling."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..config import Region
-from .actor import Actor, EventPayload, Message, SendRequest, TimerPayload
 from .simulator import Event
-from .types import NETWORK_ACTOR_ID, ActorId
 
 if TYPE_CHECKING:
     from ..metrics.collector import MetricsCollector
+    from .actor import Message, SendRequest
     from .simulator import Simulator
+    from .types import ActorId
 
 
 @dataclass(frozen=True)
@@ -72,12 +72,11 @@ LATENCY_DEFAULTS: dict[tuple[Region, Region], LatencyParams] = {
 }
 
 
-class Network(Actor):
-    """Network actor that handles message delivery with realistic latency.
+class Network:
+    """Network component that handles message delivery with realistic latency.
 
-    The Network is a special actor that receives SendRequest events and
-    schedules delayed Message delivery to the target actor. Delay is
-    calculated based on:
+    The Network receives SendRequest calls from the Simulator and schedules
+    delayed Message delivery to the target actor. Delay is calculated based on:
     - Base latency between regions
     - Random jitter
     - Transmission time based on message size and bandwidth limits
@@ -92,7 +91,7 @@ class Network(Actor):
         default_bandwidth: float = 100 * 1024 * 1024,  # 100 MB/s
         codel_config: CoDelConfig | None = None,
     ) -> None:
-        super().__init__(NETWORK_ACTOR_ID, simulator)
+        self._simulator = simulator
         self._latency_matrix = latency_matrix or LATENCY_DEFAULTS
         self._default_bandwidth = default_bandwidth
         self._metrics = metrics
@@ -115,22 +114,13 @@ class Network(Actor):
         region: Region,
         bandwidth: float | None = None,
     ) -> None:
-        """Register a node's network properties."""
         self._actor_regions[actor_id] = region
         self._actor_bandwidth[actor_id] = bandwidth or self._default_bandwidth
 
-    def on_event(self, payload: EventPayload) -> None:
-        """Handle SendRequest events by scheduling delayed delivery."""
-        match payload:
-            case SendRequest(msg=msg, from_=from_, to=to):
-                self._deliver(msg, from_, to)
-            case TimerPayload():
-                pass  # No timer handling needed for basic network
-            case Message():
-                pass  # Network doesn't receive regular messages
+    def handle_send_request(self, request: SendRequest) -> None:
+        self._deliver(request.msg, request.from_, request.to)
 
     def _deliver(self, msg: Message, from_: ActorId, to: ActorId) -> None:
-        """Calculate delay and schedule message delivery."""
         delay = self._calculate_delay(from_, to, msg.size_bytes)
 
         self._simulator.schedule(
@@ -150,7 +140,6 @@ class Network(Actor):
         self._metrics.record_bandwidth(from_, to, msg.size_bytes, is_control)
 
     def _is_control_message(self, msg: Message) -> bool:
-        """Determine if a message is control (announcements) vs data (cells)."""
         # Import here to avoid circular dependencies
         from ..protocol.messages import Cells, GetCells, PooledTransactions
 
@@ -159,14 +148,7 @@ class Network(Actor):
         return not isinstance(msg, Cells | PooledTransactions | GetCells)
 
     def _calculate_delay(self, from_: ActorId, to: ActorId, size_bytes: int) -> float:
-        """Calculate total delay for a message.
-
-        Components:
-        - Base latency between regions
-        - Gaussian jitter
-        - Transmission time (size / bandwidth)
-        - CoDel queue delay during congestion
-        """
+        """Delay = base latency + jitter + transmission time + CoDel queue delay."""
         # Get regions (default to NA if not registered)
         from_region = self._actor_regions.get(from_, Region.NA)
         to_region = self._actor_regions.get(to, Region.NA)
@@ -194,21 +176,13 @@ class Network(Actor):
         return max(0, base + jitter + transmission + codel)
 
     def _get_codel_state(self, from_: ActorId, to: ActorId) -> CoDelState:
-        """Get or create CoDel state for a link."""
         link = (from_, to)
         if link not in self._codel_state:
             self._codel_state[link] = CoDelState()
         return self._codel_state[link]
 
     def _codel_delay(self, from_: ActorId, to: ActorId, size_bytes: int) -> float:
-        """Calculate CoDel-based queue delay.
-
-        Implements a simplified CoDel model:
-        1. Track virtual queue depth per link
-        2. Drain queue over time based on configured rate
-        3. Add sojourn delay proportional to queue depth
-        4. Use sqrt backoff for consecutive delays
-        """
+        """Simplified CoDel: tracks queue depth, drains over time, sqrt backoff."""
         current_time = self._simulator.current_time
         config = self._codel_config
         state = self._get_codel_state(from_, to)

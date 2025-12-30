@@ -2,13 +2,8 @@
 
 import pytest
 
-from sparse_blobpool.config import SimulationConfig
-from sparse_blobpool.core.block_producer import (
-    BLOCK_PRODUCER_ID,
-    BlockProducer,
-    InclusionPolicy,
-    SlotConfig,
-)
+from sparse_blobpool.config import InclusionPolicy, SimulationConfig
+from sparse_blobpool.core.block_producer import BLOCK_PRODUCER_ID, BlockProducer
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, Address, TxHash
@@ -20,7 +15,7 @@ from sparse_blobpool.protocol.constants import ALL_ONES
 
 @pytest.fixture
 def config() -> SimulationConfig:
-    """Create test configuration."""
+    """Create test configuration with fast slots for testing."""
     return SimulationConfig(
         provider_probability=0.15,
         min_providers_before_sample=2,
@@ -28,39 +23,31 @@ def config() -> SimulationConfig:
         provider_observation_timeout=2.0,
         custody_columns=8,
         extra_random_columns=1,
+        slot_duration=1.0,  # Fast slots for testing
+        max_blobs_per_block=6,
     )
 
 
 @pytest.fixture
 def simulator() -> Simulator:
-    """Create a fresh simulator."""
     return Simulator(seed=42)
 
 
 @pytest.fixture
 def metrics(simulator: Simulator) -> MetricsCollector:
-    """Create a metrics collector."""
     return MetricsCollector(simulator=simulator)
 
 
 @pytest.fixture
 def network(simulator: Simulator, metrics: MetricsCollector) -> Network:
-    """Create and register network actor."""
     net = Network(simulator, metrics)
-    simulator.register_actor(net)
+    simulator._network = net
     return net
 
 
 @pytest.fixture
-def slot_config() -> SlotConfig:
-    """Create slot configuration with fast slots for testing."""
-    return SlotConfig(slot_duration=1.0, max_blobs_per_block=6)
-
-
-@pytest.fixture
-def block_producer(simulator: Simulator, slot_config: SlotConfig) -> BlockProducer:
-    """Create and register block producer."""
-    bp = BlockProducer(simulator, slot_config=slot_config)
+def block_producer(simulator: Simulator, config: SimulationConfig) -> BlockProducer:
+    bp = BlockProducer(simulator, config=config)
     simulator.register_actor(bp)
     return bp
 
@@ -156,7 +143,6 @@ class TestSlotTicking:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """Slot number advances after each tick."""
         node = create_node(simulator, network, config, "node-1")
@@ -165,11 +151,11 @@ class TestSlotTicking:
         block_producer.start()
 
         # Run past first slot
-        simulator.run(until=slot_config.slot_duration + 0.1)
+        simulator.run(until=config.slot_duration + 0.1)
         assert block_producer.current_slot == 1
 
         # Run past second slot
-        simulator.run(until=2 * slot_config.slot_duration + 0.1)
+        simulator.run(until=2 * config.slot_duration + 0.1)
         assert block_producer.current_slot == 2
 
     def test_tick_reschedules_next_tick(
@@ -178,14 +164,13 @@ class TestSlotTicking:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """Each tick schedules the next tick."""
         node = create_node(simulator, network, config, "node-1")
         block_producer.register_node(node.id)
 
         block_producer.start()
-        simulator.run(until=slot_config.slot_duration + 0.1)
+        simulator.run(until=config.slot_duration + 0.1)
 
         # Should have scheduled next tick
         assert simulator.pending_event_count() > 0
@@ -198,7 +183,6 @@ class TestProposerSelection:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """Proposer selection rotates through registered nodes."""
         nodes = [create_node(simulator, network, config, f"node-{i}") for i in range(3)]
@@ -213,7 +197,7 @@ class TestProposerSelection:
         block_producer.start()
 
         # Run through 3 slots
-        simulator.run(until=3 * slot_config.slot_duration + 0.1)
+        simulator.run(until=3 * config.slot_duration + 0.1)
 
         # All 3 nodes should have been proposers (round-robin)
         assert block_producer.blocks_produced == 3
@@ -226,7 +210,6 @@ class TestBlobSelection:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """Transactions are selected by effective tip (priority fee)."""
         node = create_node(simulator, network, config, "node-1")
@@ -239,7 +222,7 @@ class TestBlobSelection:
         node.pool.add(tx_high)
 
         block_producer.start()
-        simulator.run(until=slot_config.slot_duration + 0.1)
+        simulator.run(until=config.slot_duration + 0.1)
 
         # Both should be included since we have capacity
         assert block_producer.total_blobs_included == 2
@@ -249,12 +232,11 @@ class TestBlobSelection:
         simulator: Simulator,
         network: Network,
         config: SimulationConfig,
-        slot_config: SlotConfig,
     ) -> None:
         """Block producer respects max blobs per block limit."""
         # Create config with 2 max blobs
-        limited_slot_config = SlotConfig(slot_duration=1.0, max_blobs_per_block=2)
-        bp = BlockProducer(simulator, slot_config=limited_slot_config)
+        limited_config = SimulationConfig(slot_duration=1.0, max_blobs_per_block=2)
+        bp = BlockProducer(simulator, config=limited_config)
         simulator.register_actor(bp)
 
         node = create_node(simulator, network, config, "node-1")
@@ -266,7 +248,7 @@ class TestBlobSelection:
             node.pool.add(tx)
 
         bp.start()
-        simulator.run(until=limited_slot_config.slot_duration + 0.1)
+        simulator.run(until=limited_config.slot_duration + 0.1)
 
         # Only 2 blobs should be included
         assert bp.total_blobs_included == 2
@@ -276,11 +258,10 @@ class TestBlobSelection:
         simulator: Simulator,
         network: Network,
         config: SimulationConfig,
-        slot_config: SlotConfig,
     ) -> None:
         """Multi-blob transactions are counted correctly against limit."""
-        limited_config = SlotConfig(slot_duration=1.0, max_blobs_per_block=4)
-        bp = BlockProducer(simulator, slot_config=limited_config)
+        limited_config = SimulationConfig(slot_duration=1.0, max_blobs_per_block=4)
+        bp = BlockProducer(simulator, config=limited_config)
         simulator.register_actor(bp)
 
         node = create_node(simulator, network, config, "node-1")
@@ -305,12 +286,12 @@ class TestInclusionPolicies:
         simulator: Simulator,
         network: Network,
         config: SimulationConfig,
-        slot_config: SlotConfig,
     ) -> None:
         """Conservative policy only includes txs with full blob availability."""
-        bp = BlockProducer(
-            simulator, slot_config=slot_config, inclusion_policy=InclusionPolicy.CONSERVATIVE
+        conservative_config = SimulationConfig(
+            slot_duration=1.0, inclusion_policy=InclusionPolicy.CONSERVATIVE
         )
+        bp = BlockProducer(simulator, config=conservative_config)
         simulator.register_actor(bp)
 
         node = create_node(simulator, network, config, "node-1")
@@ -323,7 +304,7 @@ class TestInclusionPolicies:
         node.pool.add(tx_partial)
 
         bp.start()
-        simulator.run(until=slot_config.slot_duration + 0.1)
+        simulator.run(until=conservative_config.slot_duration + 0.1)
 
         # Only full tx should be included
         assert bp.total_blobs_included == 1
@@ -333,12 +314,12 @@ class TestInclusionPolicies:
         simulator: Simulator,
         network: Network,
         config: SimulationConfig,
-        slot_config: SlotConfig,
     ) -> None:
         """Optimistic policy includes txs with any availability."""
-        bp = BlockProducer(
-            simulator, slot_config=slot_config, inclusion_policy=InclusionPolicy.OPTIMISTIC
+        optimistic_config = SimulationConfig(
+            slot_duration=1.0, inclusion_policy=InclusionPolicy.OPTIMISTIC
         )
+        bp = BlockProducer(simulator, config=optimistic_config)
         simulator.register_actor(bp)
 
         node = create_node(simulator, network, config, "node-1")
@@ -349,7 +330,7 @@ class TestInclusionPolicies:
         node.pool.add(tx_partial)
 
         bp.start()
-        simulator.run(until=slot_config.slot_duration + 0.1)
+        simulator.run(until=optimistic_config.slot_duration + 0.1)
 
         # Partial tx should be included
         assert bp.total_blobs_included == 1
@@ -362,7 +343,6 @@ class TestBlockBroadcast:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """Block announcement is broadcast to all registered nodes."""
 
@@ -375,11 +355,11 @@ class TestBlockBroadcast:
         nodes[0].pool.add(tx)
 
         block_producer.start()
-        simulator.run(until=slot_config.slot_duration + 0.5)
+        simulator.run(until=config.slot_duration + 0.5)
 
         # All nodes should have received the block announcement and processed it
         # After the cleanup delay (2 seconds), tx should be removed
-        simulator.run(until=slot_config.slot_duration + 3.0)
+        simulator.run(until=config.slot_duration + 3.0)
 
         # Tx should be removed from proposer's pool after cleanup
         assert not nodes[0].pool.contains(tx.tx_hash)
@@ -390,7 +370,6 @@ class TestBlockBroadcast:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """No block is broadcast when there are no includable transactions."""
         node = create_node(simulator, network, config, "node-1")
@@ -398,7 +377,7 @@ class TestBlockBroadcast:
 
         # Empty pool
         block_producer.start()
-        simulator.run(until=slot_config.slot_duration + 0.1)
+        simulator.run(until=config.slot_duration + 0.1)
 
         # No blocks should be produced
         assert block_producer.blocks_produced == 0
@@ -411,7 +390,6 @@ class TestNodeBlockHandling:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """Included transactions are removed from pool after cleanup delay."""
         node = create_node(simulator, network, config, "node-1")
@@ -425,12 +403,12 @@ class TestNodeBlockHandling:
         block_producer.start()
 
         # Run just past the slot - tx should still be in pool (cleanup pending)
-        simulator.run(until=slot_config.slot_duration + 0.5)
+        simulator.run(until=config.slot_duration + 0.5)
         # Pool still contains it during cleanup delay
         # (depends on network delay, may or may not be removed yet)
 
         # Run past cleanup delay (2 seconds + network delay buffer)
-        simulator.run(until=slot_config.slot_duration + 3.0)
+        simulator.run(until=config.slot_duration + 3.0)
 
         # Now tx should be removed
         assert not node.pool.contains(tx.tx_hash)
@@ -441,7 +419,6 @@ class TestNodeBlockHandling:
         network: Network,
         config: SimulationConfig,
         block_producer: BlockProducer,
-        slot_config: SlotConfig,
     ) -> None:
         """Pending transactions are removed when block announces them."""
         node = create_node(simulator, network, config, "node-1")
@@ -467,7 +444,7 @@ class TestNodeBlockHandling:
         node2._pending_txs[tx.tx_hash] = pending
 
         block_producer.start()
-        simulator.run(until=slot_config.slot_duration + 0.5)
+        simulator.run(until=config.slot_duration + 0.5)
 
         # Pending should be removed from node2
         assert tx.tx_hash not in node2._pending_txs

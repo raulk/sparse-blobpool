@@ -23,7 +23,7 @@ def metrics(simulator: Simulator) -> MetricsCollector:
 def simulator_with_network(
     simulator: Simulator, metrics: MetricsCollector
 ) -> tuple[Simulator, Network]:
-    """Create a simulator with network actor registered."""
+    """Create a simulator with network configured."""
     network = Network(simulator, metrics)
-    simulator.register_actor(network)
+    simulator._network = network
     return simulator, network

@@ -46,9 +46,9 @@ def metrics(simulator: Simulator) -> MetricsCollector:
 
 @pytest.fixture
 def network(simulator: Simulator, metrics: MetricsCollector) -> Network:
-    """Create and register network actor."""
+    """Create and configure network."""
     net = Network(simulator, metrics)
-    simulator.register_actor(net)
+    simulator._network = net
     return net
 
 

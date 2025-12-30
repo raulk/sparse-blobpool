@@ -1,4 +1,4 @@
-"""Tests for the Network actor and latency model."""
+"""Tests for the Network component and latency model."""
 
 from dataclasses import dataclass
 
@@ -74,12 +74,11 @@ class TestLatencyParams:
 
 class TestNetwork:
     def test_network_creation(self) -> None:
-        """Network actor can be created and registered."""
+        """Network component can be created and configured."""
         sim = Simulator()
         network = make_network(sim)
-        sim.register_actor(network)
+        sim._network = network
 
-        assert network.id == ActorId("network")
         assert network.messages_delivered == 0
         assert network.total_bytes == 0
 
@@ -87,7 +86,7 @@ class TestNetwork:
         """Messages are delivered to target actors."""
         sim = Simulator()
         network = make_network(sim)
-        sim.register_actor(network)
+        sim._network = network
 
         sender = RecordingActor(ActorId("sender"), sim)
         receiver = RecordingActor(ActorId("receiver"), sim)
@@ -112,7 +111,7 @@ class TestNetwork:
         """Message delivery takes time based on latency model."""
         sim = Simulator()
         network = make_network(sim)
-        sim.register_actor(network)
+        sim._network = network
 
         sender = RecordingActor(ActorId("sender"), sim)
         receiver = RecordingActor(ActorId("receiver"), sim)
@@ -138,7 +137,7 @@ class TestNetwork:
         # Same-region test
         sim1 = Simulator(seed=42)
         network1 = make_network(sim1)
-        sim1.register_actor(network1)
+        sim1._network = network1
 
         sender1 = RecordingActor(ActorId("sender"), sim1)
         receiver1 = RecordingActor(ActorId("receiver"), sim1)
@@ -157,7 +156,7 @@ class TestNetwork:
         # Cross-region test
         sim2 = Simulator(seed=42)
         network2 = make_network(sim2)
-        sim2.register_actor(network2)
+        sim2._network = network2
 
         sender2 = RecordingActor(ActorId("sender"), sim2)
         receiver2 = RecordingActor(ActorId("receiver"), sim2)
@@ -180,7 +179,7 @@ class TestNetwork:
         """Larger messages take longer to transmit."""
         sim1 = Simulator(seed=42)
         network1 = make_network(sim1, default_bandwidth=1_000_000)  # 1 MB/s
-        sim1.register_actor(network1)
+        sim1._network = network1
 
         sender1 = RecordingActor(ActorId("sender"), sim1)
         receiver1 = RecordingActor(ActorId("receiver"), sim1)
@@ -200,7 +199,7 @@ class TestNetwork:
         # Large message
         sim2 = Simulator(seed=42)
         network2 = make_network(sim2, default_bandwidth=1_000_000)
-        sim2.register_actor(network2)
+        sim2._network = network2
 
         sender2 = RecordingActor(ActorId("sender"), sim2)
         receiver2 = RecordingActor(ActorId("receiver"), sim2)
@@ -223,7 +222,7 @@ class TestNetwork:
         """Network tracks total bytes transmitted."""
         sim = Simulator()
         network = make_network(sim)
-        sim.register_actor(network)
+        sim._network = network
 
         sender = RecordingActor(ActorId("sender"), sim)
         receiver = RecordingActor(ActorId("receiver"), sim)
@@ -254,7 +253,7 @@ class TestNetwork:
 
         sim = Simulator(seed=42)
         network = make_network(sim, latency_matrix=custom_matrix)
-        sim.register_actor(network)
+        sim._network = network
 
         sender = RecordingActor(ActorId("sender"), sim)
         receiver = RecordingActor(ActorId("receiver"), sim)
@@ -277,7 +276,7 @@ class TestNetwork:
         """Unregistered nodes default to NA region."""
         sim = Simulator()
         network = make_network(sim)
-        sim.register_actor(network)
+        sim._network = network
 
         sender = RecordingActor(ActorId("sender"), sim)
         receiver = RecordingActor(ActorId("receiver"), sim)
@@ -328,7 +327,7 @@ class TestCoDelBehavior:
         """CoDel state is created and tracked per link."""
         sim = Simulator()
         network = make_network(sim)
-        sim.register_actor(network)
+        sim._network = network
 
         # Get state for a link - creates new state
         state1 = network._get_codel_state(ActorId("a"), ActorId("b"))
@@ -348,7 +347,7 @@ class TestCoDelBehavior:
         # Use small drain rate to build queue
         codel_config = CoDelConfig(drain_rate=1000)  # 1 KB/s
         network = make_network(sim, codel_config=codel_config)
-        sim.register_actor(network)
+        sim._network = network
 
         # Calculate delay for a large message
         delay = network._codel_delay(ActorId("a"), ActorId("b"), 10000)
@@ -361,7 +360,7 @@ class TestCoDelBehavior:
         sim = Simulator()
         codel_config = CoDelConfig(drain_rate=1000)  # 1 KB/s
         network = make_network(sim, codel_config=codel_config)
-        sim.register_actor(network)
+        sim._network = network
 
         # Add bytes to queue
         network._codel_delay(ActorId("a"), ActorId("b"), 1000)
@@ -381,7 +380,7 @@ class TestCoDelBehavior:
         sim = Simulator()
         codel_config = CoDelConfig(max_queue_bytes=1000, drain_rate=1)  # 1 KB max
         network = make_network(sim, codel_config=codel_config)
-        sim.register_actor(network)
+        sim._network = network
 
         # Try to add more than max
         network._codel_delay(ActorId("a"), ActorId("b"), 5000)
@@ -400,7 +399,7 @@ class TestCoDelBehavior:
             drain_rate=1000,  # 1 KB/s
         )
         network = make_network(sim, codel_config=codel_config)
-        sim.register_actor(network)
+        sim._network = network
 
         # First message - builds queue
         _ = network._codel_delay(ActorId("a"), ActorId("b"), 100)

@@ -76,7 +76,6 @@ class MetricsCollector:
     _data_bytes: int = 0
 
     def register_node(self, node_id: ActorId, region: Region) -> None:
-        """Register a node for metrics tracking."""
         self.node_regions[node_id] = region
         self.node_count += 1
 
@@ -87,7 +86,6 @@ class MetricsCollector:
         size: int,
         is_control: bool = False,
     ) -> None:
-        """Record bandwidth usage for a message."""
         self.bytes_sent[from_] += size
         self.bytes_received[to] += size
         self._total_bytes += size
@@ -106,7 +104,6 @@ class MetricsCollector:
         role: Role,
         cell_mask: int,
     ) -> None:
-        """Record that a node has seen/received a transaction."""
         current_time = self.simulator.current_time
 
         if tx_hash not in self.tx_metrics:
@@ -133,30 +130,23 @@ class MetricsCollector:
             metrics.propagation_complete_time = current_time
 
     def record_inclusion(self, tx_hash: TxHash, slot: int) -> None:
-        """Record that a transaction was included in a block."""
         if tx_hash in self.tx_metrics:
             self.tx_metrics[tx_hash].included_at_slot = slot
 
     def record_spam(self, tx_hash: TxHash, accepted: bool) -> None:
-        """Record spam transaction outcome."""
         if accepted:
             self.spam_accepted += 1
         else:
             self.spam_rejected += 1
 
     def record_poisoning(self, victim_id: ActorId, tx_hash: TxHash) -> None:
-        """Record a poisoning attack against a victim."""
         self.poisoned_txs[victim_id] += 1
 
     def record_withholding_detected(self) -> None:
-        """Record detection of data withholding."""
         self.withholding_detected += 1
 
     def snapshot(self) -> None:
-        """Take a point-in-time snapshot of metrics.
-
-        Should be called periodically during simulation to build timeseries.
-        """
+        """Called periodically to build bandwidth/propagation timeseries."""
         current_time = self.simulator.current_time
 
         # Skip if we recently took a snapshot
@@ -207,7 +197,6 @@ class MetricsCollector:
                 )
 
     def finalize(self) -> SimulationResults:
-        """Compute derived metrics and return final results."""
         # Take final snapshot
         self.snapshot()
 

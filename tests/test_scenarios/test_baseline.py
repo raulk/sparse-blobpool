@@ -24,11 +24,12 @@ class TestBuildSimulation:
         for node in result.nodes:
             assert node.id in result.actors
 
-    def test_network_registered_with_simulator(self) -> None:
+    def test_network_configured_on_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
         result = build_simulator(config)
 
-        assert result.network.id in result.actors
+        # Network is now a component, not an actor
+        assert result.network is not None
 
     def test_block_producer_registered_with_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
