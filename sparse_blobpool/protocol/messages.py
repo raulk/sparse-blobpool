@@ -1,10 +1,13 @@
 """eth/71 protocol message types for sparse blobpool."""
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from sparse_blobpool.core.actor import Message
-from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.protocol.constants import CELL_SIZE, MESSAGE_OVERHEAD
+
+if TYPE_CHECKING:
+    from sparse_blobpool.core.types import ActorId, TxHash
 
 
 @dataclass
