@@ -258,8 +258,8 @@ uv run python -m scenarios.baseline
 
 ### 6.1 Adversary base
 
-- [ ] Implement `Adversary` ABC
-- [ ] Support controlled node injection
+- [x] Implement `Adversary` ABC
+- [x] Support controlled node injection
 
 #### Files
 
@@ -271,9 +271,9 @@ uv run python -m scenarios.baseline
 
 ### 6.2 T1.1/T1.2 Spam attack
 
-- [ ] Implement `SpamAdversary`
-- [ ] Configure spam rate, validity
-- [ ] Measure spam amplification
+- [x] Implement `SpamAdversary`
+- [x] Configure spam rate, validity
+- [x] Measure spam amplification
 
 #### Files
 
@@ -286,9 +286,9 @@ uv run python -m scenarios.baseline
 
 ### 6.3 T2.1 Selective withholding
 
-- [ ] Implement `WithholdingAdversary`
-- [ ] Serve only allowed columns
-- [ ] Measure detection rate via C_extra
+- [x] Implement `WithholdingAdversary`
+- [x] Serve only allowed columns
+- [x] Measure detection rate via C_extra
 
 #### Files
 
@@ -300,10 +300,10 @@ uv run python -m scenarios.baseline
 
 ### 6.4 T4.2 Targeted poisoning
 
-- [ ] Implement `TargetedPoisoningAdversary`
-- [ ] Signal availability only to victim
-- [ ] Create nonce gap chains
-- [ ] Measure victim blobpool pollution
+- [x] Implement `TargetedPoisoningAdversary`
+- [x] Signal availability only to victim
+- [x] Create nonce gap chains
+- [x] Measure victim blobpool pollution
 
 #### Files
 

@@ -23,6 +23,9 @@ class TimerKind(Enum):
     SLOT_TICK = auto()
     TX_CLEANUP = auto()
     REQUEST_TIMEOUT = auto()
+    # Adversary timers
+    SPAM_NEXT = auto()
+    INJECT_NEXT = auto()
 
 
 @dataclass
