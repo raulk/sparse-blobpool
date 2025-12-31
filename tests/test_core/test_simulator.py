@@ -134,9 +134,7 @@ class TestSimulator:
         sim.register_actor(actor)
 
         # Advance time
-        sim.schedule(
-            Event(timestamp=1.0, target_id=ActorId("test"), payload=DummyCommand())
-        )
+        sim.schedule(Event(timestamp=1.0, target_id=ActorId("test"), payload=DummyCommand()))
         sim.run(until=2.0)
 
         # Try to schedule in the past
@@ -191,9 +189,7 @@ class TestSimulator:
         actor = RecordingActor(ActorId("test"), sim)
         sim.register_actor(actor)
 
-        sim.schedule(
-            Event(timestamp=5.0, target_id=ActorId("test"), payload=DummyCommand())
-        )
+        sim.schedule(Event(timestamp=5.0, target_id=ActorId("test"), payload=DummyCommand()))
         sim.run(until=10.0)
 
         assert sim.current_time == 5.0
@@ -204,12 +200,8 @@ class TestSimulator:
         actor = RecordingActor(ActorId("test"), sim)
         sim.register_actor(actor)
 
-        sim.schedule(
-            Event(timestamp=5.0, target_id=ActorId("test"), payload=DummyCommand())
-        )
-        sim.schedule(
-            Event(timestamp=15.0, target_id=ActorId("test"), payload=DummyCommand())
-        )
+        sim.schedule(Event(timestamp=5.0, target_id=ActorId("test"), payload=DummyCommand()))
+        sim.schedule(Event(timestamp=15.0, target_id=ActorId("test"), payload=DummyCommand()))
 
         sim.run(until=10.0)
 

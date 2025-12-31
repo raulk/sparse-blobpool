@@ -1,20 +1,13 @@
 """Simulation configuration."""
 
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import dataclass
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
-
-class Region(Enum):
-    """Geographic regions for network latency modeling."""
-
-    NA = auto()  # North America
-    EU = auto()  # Europe
-    AS = auto()  # Asia
-
-
-class TopologyStrategy(Enum):
-    RANDOM_GRAPH = auto()
-    GEOGRAPHIC_KADEMLIA = auto()
+if TYPE_CHECKING:
+    from sparse_blobpool.core.topology import InterconnectionPolicy
 
 
 class InclusionPolicy(Enum):
@@ -29,14 +22,7 @@ class SimulationConfig:
 
     # Network topology
     node_count: int = 2000
-    region_distribution: dict[Region, float] = field(
-        default_factory=lambda: {
-            Region.NA: 0.4,
-            Region.EU: 0.4,
-            Region.AS: 0.2,
-        }
-    )
-    topology: TopologyStrategy = TopologyStrategy.GEOGRAPHIC_KADEMLIA
+    interconnection_policy: InterconnectionPolicy = None  # type: ignore[assignment]
     mesh_degree: int = 50  # D - number of peers per node
 
     # Protocol parameters (EIP-8070)
@@ -66,3 +52,9 @@ class SimulationConfig:
 
     # Node bandwidth (bytes/sec)
     default_bandwidth: float = 100 * 1024 * 1024  # 100 MB/s
+
+    def __post_init__(self) -> None:
+        if self.interconnection_policy is None:
+            from sparse_blobpool.core.topology import GEOGRAPHIC
+
+            object.__setattr__(self, "interconnection_policy", GEOGRAPHIC)

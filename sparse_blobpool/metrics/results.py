@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sparse_blobpool.core.types import ActorId, Region, TxHash
+    from sparse_blobpool.core.latency import Country
+    from sparse_blobpool.core.types import ActorId, TxHash
 
 
 @dataclass
@@ -15,7 +16,7 @@ class BandwidthSnapshot:
     total_bytes: int
     control_bytes: int
     data_bytes: int
-    per_region: dict[Region, int] = field(default_factory=dict)
+    per_country: dict[Country, int] = field(default_factory=dict)
 
 
 @dataclass

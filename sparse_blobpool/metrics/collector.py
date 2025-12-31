@@ -16,8 +16,9 @@ from sparse_blobpool.protocol.constants import ALL_ONES
 
 if TYPE_CHECKING:
     from sparse_blobpool.actors.honest import Role
+    from sparse_blobpool.core.latency import Country
     from sparse_blobpool.core.simulator import Simulator
-    from sparse_blobpool.core.types import ActorId, Region, TxHash
+    from sparse_blobpool.core.types import ActorId, TxHash
 
 
 # Estimated size of a full blob transaction for bandwidth reduction calculations
@@ -57,8 +58,8 @@ class MetricsCollector:
     bytes_sent_control: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
     bytes_sent_data: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
 
-    # Region tracking
-    node_regions: dict[ActorId, Region] = field(default_factory=dict)
+    # Country tracking
+    node_countries: dict[ActorId, Country] = field(default_factory=dict)
 
     # Timeseries
     bandwidth_timeseries: list[BandwidthSnapshot] = field(default_factory=list)
@@ -79,8 +80,8 @@ class MetricsCollector:
     _control_bytes: int = 0
     _data_bytes: int = 0
 
-    def register_node(self, node_id: ActorId, region: Region) -> None:
-        self.node_regions[node_id] = region
+    def register_node(self, node_id: ActorId, country: Country) -> None:
+        self.node_countries[node_id] = country
         self.node_count += 1
 
     def record_bandwidth(
@@ -160,11 +161,11 @@ class MetricsCollector:
         self._last_snapshot_time = current_time
 
         # Bandwidth snapshot
-        per_region: dict[Region, int] = defaultdict(int)
+        per_country: dict[Country, int] = defaultdict(int)
         for node_id, bytes_sent in self.bytes_sent.items():
-            region = self.node_regions.get(node_id)
-            if region:
-                per_region[region] += bytes_sent
+            country = self.node_countries.get(node_id)
+            if country:
+                per_country[country] += bytes_sent
 
         self.bandwidth_timeseries.append(
             BandwidthSnapshot(
@@ -172,7 +173,7 @@ class MetricsCollector:
                 total_bytes=self._total_bytes,
                 control_bytes=self._control_bytes,
                 data_bytes=self._data_bytes,
-                per_region=dict(per_region),
+                per_country=dict(per_country),
             )
         )
 

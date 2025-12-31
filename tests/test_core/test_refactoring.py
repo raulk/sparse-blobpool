@@ -9,7 +9,7 @@ These tests define the NEW behavior we want:
 import pytest
 
 from sparse_blobpool.actors.honest import Node
-from sparse_blobpool.config import Region, SimulationConfig
+from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, Address, TxHash
@@ -48,13 +48,13 @@ def create_node(
     network: Network,
     config: SimulationConfig,
     node_id: str,
-    region: Region = Region.NA,
+    country: str = "united states",
 ) -> Node:
     """Helper to create and register a node."""
     metrics = MetricsCollector(simulator=simulator)
     node = Node(ActorId(node_id), simulator, config, custody_columns=8, metrics=metrics)
     simulator.register_actor(node)
-    network.register_node(node.id, region)
+    network.register_node(node.id, country)
     return node
 
 
