@@ -6,22 +6,14 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sparse_blobpool.config import Region
 from sparse_blobpool.core.events import Event
+from sparse_blobpool.core.latency import LATENCY_MODEL, Country
 
 if TYPE_CHECKING:
     from sparse_blobpool.core.events import Message
     from sparse_blobpool.core.simulator import Simulator
     from sparse_blobpool.core.types import ActorId
     from sparse_blobpool.metrics.collector import MetricsCollector
-
-
-@dataclass(frozen=True)
-class LatencyParams:
-    """Parameters for modeling network latency between regions."""
-
-    base_ms: float  # Base one-way delay in milliseconds
-    jitter_ratio: float  # Standard deviation as fraction of base
 
 
 @dataclass
@@ -72,28 +64,12 @@ class CoDelConfig:
     drain_rate: float = 100 * 1024 * 1024  # 100 MB/s virtual drain
 
 
-# Default latency matrix (one-way delay)
-LATENCY_DEFAULTS: dict[tuple[Region, Region], LatencyParams] = {
-    # Same region
-    (Region.NA, Region.NA): LatencyParams(20, 0.1),
-    (Region.EU, Region.EU): LatencyParams(15, 0.1),
-    (Region.AS, Region.AS): LatencyParams(25, 0.1),
-    # Cross-region (symmetric)
-    (Region.NA, Region.EU): LatencyParams(45, 0.15),
-    (Region.EU, Region.NA): LatencyParams(45, 0.15),
-    (Region.NA, Region.AS): LatencyParams(90, 0.2),
-    (Region.AS, Region.NA): LatencyParams(90, 0.2),
-    (Region.EU, Region.AS): LatencyParams(75, 0.15),
-    (Region.AS, Region.EU): LatencyParams(75, 0.15),
-}
-
-
 class Network:
     """Network component that handles message delivery with realistic latency.
 
     Actors call network.deliver() to send messages. Delay is calculated based on:
-    - Base latency between regions
-    - Random jitter
+    - Base latency between countries (from country_latencies.json)
+    - Distance-based jitter
     - Transmission time based on message size and bandwidth limits
     - CoDel queue delay during congestion
     """
@@ -102,18 +78,16 @@ class Network:
         self,
         simulator: Simulator,
         metrics: MetricsCollector,
-        latency_matrix: dict[tuple[Region, Region], LatencyParams] | None = None,
         default_bandwidth: float = 100 * 1024 * 1024,  # 100 MB/s
         codel_config: CoDelConfig | None = None,
     ) -> None:
         self._simulator = simulator
-        self._latency_matrix = latency_matrix or LATENCY_DEFAULTS
         self._default_bandwidth = default_bandwidth
         self._metrics = metrics
         self._codel_config = codel_config or CoDelConfig()
 
         # Actor metadata
-        self._actor_regions: dict[ActorId, Region] = {}
+        self._actor_countries: dict[ActorId, Country] = {}
         self._actor_bandwidth: dict[ActorId, float] = {}
 
         # Per-link CoDel state
@@ -126,10 +100,10 @@ class Network:
     def register_node(
         self,
         actor_id: ActorId,
-        region: Region,
+        country: Country,
         bandwidth: float | None = None,
     ) -> None:
-        self._actor_regions[actor_id] = region
+        self._actor_countries[actor_id] = country
         self._actor_bandwidth[actor_id] = bandwidth or self._default_bandwidth
 
     def deliver(self, msg: Message, from_: ActorId, to: ActorId) -> None:
@@ -161,15 +135,12 @@ class Network:
 
     def _calculate_delay(self, from_: ActorId, to: ActorId, size_bytes: int) -> float:
         """Delay = base latency + jitter + transmission time + CoDel queue delay."""
-        # Get regions (default to NA if not registered)
-        from_region = self._actor_regions.get(from_, Region.NA)
-        to_region = self._actor_regions.get(to, Region.NA)
+        # Get countries (default to 'united states' if not registered)
+        from_country = self._actor_countries.get(from_, "united states")
+        to_country = self._actor_countries.get(to, "united states")
 
-        # Get latency parameters
-        params = self._latency_matrix.get(
-            (from_region, to_region),
-            LatencyParams(50, 0.15),  # Default fallback
-        )
+        # Get latency parameters from country-based model
+        params = LATENCY_MODEL.get_latency(from_country, to_country)
 
         # Base delay (convert ms to seconds)
         base = params.base_ms / 1000.0

@@ -2,13 +2,11 @@
 
 from dataclasses import dataclass
 
-from sparse_blobpool.config import Region
 from sparse_blobpool.core.actor import Actor, EventPayload, Message
+from sparse_blobpool.core.latency import LATENCY_MODEL
 from sparse_blobpool.core.network import (
-    LATENCY_DEFAULTS,
     CoDelConfig,
     CoDelState,
-    LatencyParams,
     Network,
 )
 from sparse_blobpool.core.simulator import Simulator
@@ -46,30 +44,36 @@ class RecordingActor(Actor):
             self.received.append((self.simulator.current_time, payload))
 
 
-class TestLatencyParams:
-    def test_latency_defaults_cover_all_region_pairs(self) -> None:
-        """Default latency matrix covers all region combinations."""
-        regions = list(Region)
-        for r1 in regions:
-            for r2 in regions:
-                assert (r1, r2) in LATENCY_DEFAULTS
+class TestLatencyModel:
+    def test_latency_model_loads(self) -> None:
+        """Latency model loads from JSON."""
+        assert LATENCY_MODEL is not None
+        assert len(LATENCY_MODEL.countries) > 0
 
-    def test_latency_defaults_symmetric(self) -> None:
-        """Cross-region latencies are symmetric."""
-        for (r1, r2), params in LATENCY_DEFAULTS.items():
-            if r1 != r2:
-                reverse = LATENCY_DEFAULTS[(r2, r1)]
-                assert params.base_ms == reverse.base_ms
-                assert params.jitter_ratio == reverse.jitter_ratio
+    def test_latency_model_has_whitelisted_countries(self) -> None:
+        """Latency model contains whitelisted countries from weights.json."""
+        countries = LATENCY_MODEL.countries
+        assert "united states" in countries
+        assert "germany" in countries
+        assert "japan" in countries
 
-    def test_same_region_faster_than_cross_region(self) -> None:
-        """Same-region latency is lower than cross-region."""
-        for region in Region:
-            same_region = LATENCY_DEFAULTS[(region, region)]
-            for other_region in Region:
-                if other_region != region:
-                    cross_region = LATENCY_DEFAULTS[(region, other_region)]
-                    assert same_region.base_ms < cross_region.base_ms
+    def test_same_country_has_low_latency(self) -> None:
+        """Same-country latency is relatively low."""
+        params = LATENCY_MODEL.get_latency("united states", "united states")
+        assert params.base_ms < 50  # US-US is 23ms
+
+    def test_cross_continent_has_high_latency(self) -> None:
+        """Cross-continent latency is higher."""
+        params = LATENCY_MODEL.get_latency("united states", "japan")
+        assert params.base_ms > 50
+
+    def test_distance_based_jitter(self) -> None:
+        """Jitter ratio increases with distance."""
+        same_country = LATENCY_MODEL.get_latency("germany", "germany")
+        cross_continent = LATENCY_MODEL.get_latency("germany", "japan")
+
+        # Higher latency should have higher jitter
+        assert same_country.jitter_ratio < cross_continent.jitter_ratio
 
 
 class TestNetwork:
@@ -94,8 +98,8 @@ class TestNetwork:
         sim.register_actor(receiver)
 
         # Register nodes with network
-        network.register_node(ActorId("sender"), Region.NA)
-        network.register_node(ActorId("receiver"), Region.NA)
+        network.register_node(ActorId("sender"), "united states")
+        network.register_node(ActorId("receiver"), "united states")
 
         # Send a message
         msg = SampleMessage(sender=ActorId("sender"), content="hello")
@@ -118,8 +122,8 @@ class TestNetwork:
         sim.register_actor(sender)
         sim.register_actor(receiver)
 
-        network.register_node(ActorId("sender"), Region.NA)
-        network.register_node(ActorId("receiver"), Region.NA)
+        network.register_node(ActorId("sender"), "germany")
+        network.register_node(ActorId("receiver"), "germany")
 
         # Send at time 0
         msg = SampleMessage(sender=ActorId("sender"), content="hello")
@@ -127,14 +131,14 @@ class TestNetwork:
 
         sim.run_until_empty()
 
-        # Message should arrive after some delay (NA-NA base is 20ms)
+        # Message should arrive after some delay
         arrival_time = receiver.received[0][0]
         assert arrival_time > 0.0
-        assert arrival_time < 0.1  # Should be around 20ms + jitter + transmission
+        assert arrival_time < 0.1  # Should be low for same-country
 
-    def test_cross_region_higher_latency(self) -> None:
-        """Cross-region messages have higher latency than same-region."""
-        # Same-region test
+    def test_cross_country_higher_latency(self) -> None:
+        """Cross-country messages have higher latency than same-country."""
+        # Same-country test
         sim1 = Simulator(seed=42)
         network1 = make_network(sim1)
         sim1._network = network1
@@ -144,16 +148,16 @@ class TestNetwork:
         sim1.register_actor(sender1)
         sim1.register_actor(receiver1)
 
-        network1.register_node(ActorId("sender"), Region.NA)
-        network1.register_node(ActorId("receiver"), Region.NA)
+        network1.register_node(ActorId("sender"), "germany")
+        network1.register_node(ActorId("receiver"), "germany")
 
         sender1.send(
             SampleMessage(sender=ActorId("sender"), content="test"), to=ActorId("receiver")
         )
         sim1.run_until_empty()
-        same_region_time = receiver1.received[0][0]
+        same_country_time = receiver1.received[0][0]
 
-        # Cross-region test
+        # Cross-country test
         sim2 = Simulator(seed=42)
         network2 = make_network(sim2)
         sim2._network = network2
@@ -163,17 +167,17 @@ class TestNetwork:
         sim2.register_actor(sender2)
         sim2.register_actor(receiver2)
 
-        network2.register_node(ActorId("sender"), Region.NA)
-        network2.register_node(ActorId("receiver"), Region.AS)  # Different region
+        network2.register_node(ActorId("sender"), "germany")
+        network2.register_node(ActorId("receiver"), "japan")  # Different country
 
         sender2.send(
             SampleMessage(sender=ActorId("sender"), content="test"), to=ActorId("receiver")
         )
         sim2.run_until_empty()
-        cross_region_time = receiver2.received[0][0]
+        cross_country_time = receiver2.received[0][0]
 
-        # NA-AS (90ms base) should be much higher than NA-NA (20ms base)
-        assert cross_region_time > same_region_time * 2
+        # Germany-Japan should be much higher than Germany-Germany
+        assert cross_country_time > same_country_time * 2
 
     def test_larger_messages_take_longer(self) -> None:
         """Larger messages take longer to transmit."""
@@ -185,8 +189,8 @@ class TestNetwork:
         receiver1 = RecordingActor(ActorId("receiver"), sim1)
         sim1.register_actor(sender1)
         sim1.register_actor(receiver1)
-        network1.register_node(ActorId("sender"), Region.NA)
-        network1.register_node(ActorId("receiver"), Region.NA)
+        network1.register_node(ActorId("sender"), "united states")
+        network1.register_node(ActorId("receiver"), "united states")
 
         # Small message
         sender1.send(
@@ -205,8 +209,8 @@ class TestNetwork:
         receiver2 = RecordingActor(ActorId("receiver"), sim2)
         sim2.register_actor(sender2)
         sim2.register_actor(receiver2)
-        network2.register_node(ActorId("sender"), Region.NA)
-        network2.register_node(ActorId("receiver"), Region.NA)
+        network2.register_node(ActorId("sender"), "united states")
+        network2.register_node(ActorId("receiver"), "united states")
 
         sender2.send(
             SampleMessage(sender=ActorId("sender"), content="large", _size=100_000),
@@ -228,8 +232,8 @@ class TestNetwork:
         receiver = RecordingActor(ActorId("receiver"), sim)
         sim.register_actor(sender)
         sim.register_actor(receiver)
-        network.register_node(ActorId("sender"), Region.NA)
-        network.register_node(ActorId("receiver"), Region.NA)
+        network.register_node(ActorId("sender"), "united states")
+        network.register_node(ActorId("receiver"), "united states")
 
         sender.send(
             SampleMessage(sender=ActorId("sender"), content="msg1", _size=100),
@@ -245,35 +249,8 @@ class TestNetwork:
         assert network.messages_delivered == 2
         assert network.total_bytes == 300
 
-    def test_custom_latency_matrix(self) -> None:
-        """Custom latency matrix can be provided."""
-        custom_matrix = {
-            (Region.NA, Region.NA): LatencyParams(5.0, 0.0),  # Very fast, no jitter
-        }
-
-        sim = Simulator(seed=42)
-        network = make_network(sim, latency_matrix=custom_matrix)
-        sim._network = network
-
-        sender = RecordingActor(ActorId("sender"), sim)
-        receiver = RecordingActor(ActorId("receiver"), sim)
-        sim.register_actor(sender)
-        sim.register_actor(receiver)
-        network.register_node(ActorId("sender"), Region.NA)
-        network.register_node(ActorId("receiver"), Region.NA)
-
-        # Very small message to minimize transmission time
-        sender.send(
-            SampleMessage(sender=ActorId("sender"), content="test", _size=1), to=ActorId("receiver")
-        )
-        sim.run_until_empty()
-
-        # Should be very close to 5ms = 0.005s
-        arrival_time = receiver.received[0][0]
-        assert 0.004 < arrival_time < 0.006
-
     def test_unregistered_nodes_use_defaults(self) -> None:
-        """Unregistered nodes default to NA region."""
+        """Unregistered nodes default to 'united states'."""
         sim = Simulator()
         network = make_network(sim)
         sim._network = network
@@ -283,11 +260,11 @@ class TestNetwork:
         sim.register_actor(sender)
         sim.register_actor(receiver)
 
-        # Don't register nodes - should use NA defaults
+        # Don't register nodes - should use default country
         sender.send(SampleMessage(sender=ActorId("sender"), content="test"), to=ActorId("receiver"))
         sim.run_until_empty()
 
-        # Should still work with default region
+        # Should still work with default country
         assert len(receiver.received) == 1
 
 

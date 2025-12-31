@@ -59,7 +59,7 @@ def node(
     """Create a test node."""
     n = Node(ActorId("node-1"), simulator, config, custody_columns=8, metrics=metrics)
     simulator.register_actor(n)
-    network.register_node(n.id, region=None)
+    network.register_node(n.id, "united states")
     return n
 
 
@@ -274,7 +274,7 @@ class TestProviderFlow:
         # We need to find a tx_hash that makes this node a provider
         node = Node(ActorId("provider-node"), simulator, config, custody_columns=8, metrics=metrics)
         simulator.register_actor(node)
-        network.register_node(node.id, region=None)
+        network.register_node(node.id, "united states")
 
         peer = ActorId("peer-1")
         node.add_peer(peer)
@@ -292,7 +292,7 @@ class TestProviderFlow:
 
         peer_actor = RequestRecorder(peer, simulator)
         simulator.register_actor(peer_actor)
-        network.register_node(peer, region=None)
+        network.register_node(peer, "united states")
 
         # Find a tx that makes this node a provider
         for i in range(100):
@@ -332,7 +332,7 @@ class TestSamplerFlow:
         """Sampler should wait for min_providers_before_sample provider announcements."""
         node = Node(ActorId("sampler-node"), simulator, config, custody_columns=8, metrics=metrics)
         simulator.register_actor(node)
-        network.register_node(node.id, region=None)
+        network.register_node(node.id, "united states")
 
         # Find a tx that makes this node a sampler
         for i in range(100):
@@ -515,7 +515,7 @@ class TestRequestHandling:
         peer = ActorId("peer-1")
         peer_actor = ResponseRecorder(peer, simulator)
         simulator.register_actor(peer_actor)
-        network.register_node(peer, region=None)
+        network.register_node(peer, "united states")
 
         # Send request
         request = GetPooledTransactions(sender=peer, tx_hashes=[tx_hash])
@@ -563,7 +563,7 @@ class TestRequestHandling:
         peer = ActorId("peer-1")
         peer_actor = ResponseRecorder(peer, simulator)
         simulator.register_actor(peer_actor)
-        network.register_node(peer, region=None)
+        network.register_node(peer, "united states")
 
         # Request specific columns
         request_mask = 0b11111111  # First 8 columns
@@ -608,7 +608,7 @@ class TestAnnouncement:
         """Completed transaction is announced to all peers."""
         node = Node(ActorId("test-node"), simulator, config, custody_columns=8, metrics=metrics)
         simulator.register_actor(node)
-        network.register_node(node.id, region=None)
+        network.register_node(node.id, "united states")
 
         from sparse_blobpool.core.actor import Actor, EventPayload
 
@@ -625,7 +625,7 @@ class TestAnnouncement:
         for peer in peers:
             actor = AnnouncementRecorder(peer, simulator)
             simulator.register_actor(actor)
-            network.register_node(peer, region=None)
+            network.register_node(peer, "united states")
             node.add_peer(peer)
             peer_actors.append(actor)
 

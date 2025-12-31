@@ -1,25 +1,21 @@
 """Tests for simulation configuration."""
 
-from sparse_blobpool.config import Region, SimulationConfig, TopologyStrategy
+from sparse_blobpool.config import SimulationConfig
+from sparse_blobpool.core.topology import (
+    DIVERSE,
+    GEOGRAPHIC,
+    LATENCY_AWARE,
+    RANDOM,
+)
 
 
-class TestRegion:
-    def test_all_regions_defined(self) -> None:
-        """All expected regions are defined."""
-        regions = list(Region)
-        assert len(regions) == 3
-        assert Region.NA in regions
-        assert Region.EU in regions
-        assert Region.AS in regions
-
-
-class TestTopologyStrategy:
-    def test_all_strategies_defined(self) -> None:
-        """All expected topology strategies are defined."""
-        strategies = list(TopologyStrategy)
-        assert len(strategies) == 2
-        assert TopologyStrategy.RANDOM_GRAPH in strategies
-        assert TopologyStrategy.GEOGRAPHIC_KADEMLIA in strategies
+class TestInterconnectionPolicy:
+    def test_all_policies_are_callable(self) -> None:
+        """All interconnection policies are callable functions."""
+        assert callable(RANDOM)
+        assert callable(GEOGRAPHIC)
+        assert callable(LATENCY_AWARE)
+        assert callable(DIVERSE)
 
 
 class TestSimulationConfig:
@@ -30,6 +26,7 @@ class TestSimulationConfig:
         # Network
         assert config.node_count == 2000
         assert config.mesh_degree == 50
+        assert config.interconnection_policy == GEOGRAPHIC
 
         # Protocol (EIP-8070)
         assert config.provider_probability == 0.15
@@ -51,30 +48,20 @@ class TestSimulationConfig:
         assert config.seed == 42
         assert config.duration == 600.0
 
-    def test_region_distribution_sums_to_one(self) -> None:
-        """Default region distribution sums to 1.0."""
-        config = SimulationConfig()
-        total = sum(config.region_distribution.values())
-        assert abs(total - 1.0) < 0.001
-
-    def test_region_distribution_all_regions(self) -> None:
-        """Default region distribution covers all regions."""
-        config = SimulationConfig()
-        for region in Region:
-            assert region in config.region_distribution
-
     def test_custom_values(self) -> None:
         """Custom configuration values are applied."""
         config = SimulationConfig(
             node_count=100,
             mesh_degree=25,
             provider_probability=0.20,
+            interconnection_policy=LATENCY_AWARE,
             seed=999,
         )
 
         assert config.node_count == 100
         assert config.mesh_degree == 25
         assert config.provider_probability == 0.20
+        assert config.interconnection_policy == LATENCY_AWARE
         assert config.seed == 999
 
     def test_config_is_frozen(self) -> None:

@@ -177,7 +177,7 @@ class Simulator:
         topology = build_topology(config, simulator.rng)
 
         nodes: list[Node] = []
-        for actor_id, region in topology.regions.items():
+        for actor_id, country in topology.countries.items():
             node = Node(
                 actor_id=actor_id,
                 simulator=simulator,
@@ -188,8 +188,8 @@ class Simulator:
             simulator.register_actor(node)
             nodes.append(node)
 
-            network.register_node(actor_id, region)
-            metrics.register_node(actor_id, region)
+            network.register_node(actor_id, country)
+            metrics.register_node(actor_id, country)
 
         node_lookup = {node.id: node for node in nodes}
 

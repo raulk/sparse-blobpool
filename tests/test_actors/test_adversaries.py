@@ -3,7 +3,6 @@
 import pytest
 
 from sparse_blobpool.actors.adversaries import (
-    Adversary,
     AttackConfig,
     SpamAdversary,
     SpamAttackConfig,

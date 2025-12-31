@@ -49,12 +49,13 @@ def create_node(
     network: Network,
     config: SimulationConfig,
     node_id: str,
+    country: str = "united states",
 ) -> Node:
     """Helper to create and register a node."""
     metrics = MetricsCollector(simulator=simulator)
     node = Node(ActorId(node_id), simulator, config, custody_columns=8, metrics=metrics)
     simulator.register_actor(node)
-    network.register_node(node.id, region=None)
+    network.register_node(node.id, country)
     return node
 
 

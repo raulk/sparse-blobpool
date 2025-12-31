@@ -1,7 +1,6 @@
 """Tests for the MetricsCollector."""
 
 from sparse_blobpool.actors.honest import Role
-from sparse_blobpool.config import Region
 from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
@@ -13,12 +12,12 @@ class TestMetricsCollector:
         sim = Simulator()
         metrics = MetricsCollector(simulator=sim)
 
-        metrics.register_node(ActorId("node1"), Region.NA)
-        metrics.register_node(ActorId("node2"), Region.EU)
+        metrics.register_node(ActorId("node1"), "united states")
+        metrics.register_node(ActorId("node2"), "germany")
 
         assert metrics.node_count == 2
-        assert metrics.node_regions[ActorId("node1")] == Region.NA
-        assert metrics.node_regions[ActorId("node2")] == Region.EU
+        assert metrics.node_countries[ActorId("node1")] == "united states"
+        assert metrics.node_countries[ActorId("node2")] == "germany"
 
     def test_record_bandwidth(self) -> None:
         sim = Simulator()
@@ -129,9 +128,7 @@ class TestMetricsCollector:
         sim.register_actor(actor)
 
         # Schedule and process an event to advance time
-        sim.schedule(
-            Event(timestamp=2.0, target_id=ActorId("dummy"), payload=DummyCommand())
-        )
+        sim.schedule(Event(timestamp=2.0, target_id=ActorId("dummy"), payload=DummyCommand()))
         sim.run(until=3.0)
 
         # Take snapshot at time 2.0
