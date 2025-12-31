@@ -5,14 +5,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from sparse_blobpool.core.base import Command, EventPayload, Message
+from sparse_blobpool.core.events import Command, Event, EventPayload, Message
 
 if TYPE_CHECKING:
     from sparse_blobpool.core.simulator import Simulator
     from sparse_blobpool.core.types import ActorId
 
 # Re-export for backwards compatibility
-__all__ = ["Actor", "Command", "EventPayload", "Message"]
+__all__ = ["Actor", "Command", "Event", "EventPayload", "Message"]
 
 
 class Actor(ABC):
@@ -46,8 +46,6 @@ class Actor(ABC):
 
     def schedule_command(self, delay: float, command: Command) -> None:
         """Schedule a self-targeted command after a delay."""
-        from sparse_blobpool.core.simulator import Event
-
         self._simulator.schedule(
             Event(
                 timestamp=self._simulator.current_time + delay,

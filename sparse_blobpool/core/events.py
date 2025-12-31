@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,7 +21,8 @@ class Message:
         return 8  # Base overhead
 
 
-class Command(ABC):
+@dataclass
+class Command:
     """Base class for all local commands.
 
     Commands differ from Messages:
@@ -30,12 +30,19 @@ class Command(ABC):
     - Messages are network-transmitted protocol data
     """
 
-    @property
-    @abstractmethod
-    def size_bytes(self) -> int:
-        """Size is always 0 for commands (not transmitted)."""
-        ...
 
-
-# Union of all event payload types
 EventPayload = Message | Command
+
+
+@dataclass(order=True)
+class Event:
+    """A scheduled event in the simulation.
+
+    Events are ordered by (timestamp, priority) for the priority queue.
+    Lower priority values are processed first when timestamps are equal.
+    """
+
+    timestamp: float
+    target_id: ActorId = field(compare=False)
+    payload: EventPayload = field(compare=False)
+    priority: int = 0

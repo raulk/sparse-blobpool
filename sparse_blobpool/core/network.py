@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from sparse_blobpool.config import Region
-from sparse_blobpool.core.simulator import Event
+from sparse_blobpool.core.events import Event
 
 if TYPE_CHECKING:
-    from sparse_blobpool.core.actor import Message
+    from sparse_blobpool.core.events import Message
     from sparse_blobpool.core.simulator import Simulator
     from sparse_blobpool.core.types import ActorId
     from sparse_blobpool.metrics.collector import MetricsCollector
