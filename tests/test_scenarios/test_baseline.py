@@ -3,56 +3,49 @@
 import pytest
 
 from sparse_blobpool.config import SimulationConfig
-from sparse_blobpool.scenarios.baseline import (
-    broadcast_transaction,
-    build_simulator,
-)
+from sparse_blobpool.core.simulator import Simulator
 
 
 class TestBuildSimulation:
     def test_creates_correct_node_count(self) -> None:
         config = SimulationConfig(node_count=100, mesh_degree=10)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        assert len(result.nodes) == 100
+        assert len(sim.nodes) == 100
 
     def test_nodes_registered_with_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        # All nodes should be in the simulator's actors
-        for node in result.nodes:
-            assert node.id in result.actors
+        for node in sim.nodes:
+            assert node.id in sim.actors
 
     def test_network_configured_on_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        # Network is now a component, not an actor
-        assert result.network is not None
+        assert sim.network is not None
 
     def test_block_producer_registered_with_simulator(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        assert result.block_producer.id in result.actors
+        assert sim.block_producer.id in sim.actors
 
     def test_nodes_have_peers(self) -> None:
         config = SimulationConfig(node_count=100, mesh_degree=10)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        # All nodes should have some peers
-        for node in result.nodes:
+        for node in sim.nodes:
             assert len(node.peers) > 0
 
     def test_peer_connections_bidirectional(self) -> None:
         config = SimulationConfig(node_count=50, mesh_degree=5)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        # If A is connected to B, B should be connected to A
-        for node in result.nodes:
+        for node in sim.nodes:
             for peer_id in node.peers:
-                peer = result.actors[peer_id]
+                peer = sim.actors[peer_id]
                 if hasattr(peer, "peers"):
                     assert node.id in peer.peers
 
@@ -60,41 +53,36 @@ class TestBuildSimulation:
 class TestBroadcastTransaction:
     def test_adds_tx_to_origin_pool(self) -> None:
         config = SimulationConfig(node_count=10, mesh_degree=3)
-        result = build_simulator(config)
-        origin = result.nodes[0]
+        sim = Simulator.build(config)
+        origin = sim.nodes[0]
 
-        tx_hash = broadcast_transaction(result, origin)
+        tx_hash = sim.broadcast_transaction(origin)
 
-        # Run briefly to process the broadcast event
-        result.run(0.001)
+        sim.run(0.001)
 
         assert origin.pool.contains(tx_hash)
 
     def test_announces_to_peers(self) -> None:
         config = SimulationConfig(node_count=10, mesh_degree=3)
-        result = build_simulator(config)
-        origin = result.nodes[0]
+        sim = Simulator.build(config)
+        origin = sim.nodes[0]
 
-        broadcast_transaction(result, origin)
+        sim.broadcast_transaction(origin)
 
-        # Should have scheduled the broadcast event
-        assert result.pending_event_count() > 0
+        assert sim.pending_event_count() > 0
 
     def test_tx_in_pool_after_propagation(self) -> None:
         config = SimulationConfig(node_count=20, mesh_degree=5)
-        result = build_simulator(config)
-        origin = result.nodes[0]
+        sim = Simulator.build(config)
+        origin = sim.nodes[0]
 
-        tx_hash = broadcast_transaction(result, origin)
+        tx_hash = sim.broadcast_transaction(origin)
 
-        # Run simulation briefly to let tx propagate
-        result.run(5.0)  # 5 seconds should be enough
+        sim.run(5.0)
 
-        # Check propagation
-        nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))
+        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
 
-        # Should have reached most nodes
-        assert nodes_with_tx > len(result.nodes) * 0.5
+        assert nodes_with_tx > len(sim.nodes) * 0.5
 
 
 class TestPropagation:
@@ -102,58 +90,47 @@ class TestPropagation:
         """Verify transactions propagate to >90% of nodes."""
         config = SimulationConfig(
             node_count=100,
-            mesh_degree=20,  # Higher connectivity for faster propagation
+            mesh_degree=20,
             duration=30.0,
         )
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        # Broadcast transaction
-        tx_hash = broadcast_transaction(result, result.nodes[0])
+        tx_hash = sim.broadcast_transaction(sim.nodes[0])
 
-        # Run simulation - give enough time for multi-hop propagation
-        result.run(15.0)
+        sim.run(15.0)
 
-        # Check propagation
-        nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))
-        propagation_pct = 100 * nodes_with_tx / len(result.nodes)
+        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
+        propagation_pct = 100 * nodes_with_tx / len(sim.nodes)
 
-        # Should reach most of the network (>80% for small test network)
-        # The large-scale test verifies >99% with 2000 nodes
         assert propagation_pct > 80, f"Only reached {propagation_pct:.1f}%"
 
 
 class TestBlockProduction:
     def test_block_producer_starts_ticking(self) -> None:
         config = SimulationConfig(node_count=10, mesh_degree=3)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        result.block_producer.start()
+        sim.block_producer.start()
 
-        # Should have scheduled a slot tick
-        assert result.pending_event_count() > 0
+        assert sim.pending_event_count() > 0
 
     def test_blocks_produced_over_time(self) -> None:
         config = SimulationConfig(node_count=20, mesh_degree=5)
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        # Broadcast some transactions
         tx_hashes = []
         for _ in range(5):
-            tx_hash = broadcast_transaction(result, result.nodes[0])
+            tx_hash = sim.broadcast_transaction(sim.nodes[0])
             tx_hashes.append(tx_hash)
 
-        # Start block production
-        result.block_producer.start()
+        sim.block_producer.start()
 
-        # Run for 2 slots (24 seconds) plus cleanup time
-        result.run(30.0)
+        sim.run(30.0)
 
-        # Should have advanced at least 2 slots
-        assert result.block_producer.current_slot >= 2
+        assert sim.block_producer.current_slot >= 2
 
-        # At least some transactions should be cleaned up (included in blocks)
-        tx_remaining = sum(1 for tx in tx_hashes if result.nodes[0].pool.contains(tx))
-        assert tx_remaining < 5  # Some txs should have been included
+        tx_remaining = sum(1 for tx in tx_hashes if sim.nodes[0].pool.contains(tx))
+        assert tx_remaining < 5
 
 
 class TestLargeScale:
@@ -164,19 +141,15 @@ class TestLargeScale:
             node_count=2000,
             mesh_degree=50,
         )
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        assert len(result.nodes) == 2000
+        assert len(sim.nodes) == 2000
 
-        # Check peer counts
-        peer_counts = [len(node.peers) for node in result.nodes]
+        peer_counts = [len(node.peers) for node in sim.nodes]
         min_peers = min(peer_counts)
         avg_peers = sum(peer_counts) / len(peer_counts)
 
-        # All nodes should have connections
         assert min_peers >= 1, "Some nodes have no peers"
-
-        # Average should be around mesh_degree (bidirectional, so ~2x)
         assert avg_peers >= 50, f"Average peers {avg_peers:.1f} is too low"
 
     @pytest.mark.slow
@@ -186,17 +159,13 @@ class TestLargeScale:
             node_count=2000,
             mesh_degree=50,
         )
-        result = build_simulator(config)
+        sim = Simulator.build(config)
 
-        # Broadcast transaction
-        tx_hash = broadcast_transaction(result, result.nodes[0])
+        tx_hash = sim.broadcast_transaction(sim.nodes[0])
 
-        # Run for 10 seconds (no block production)
-        result.run(10.0)
+        sim.run(10.0)
 
-        # Check propagation
-        nodes_with_tx = sum(1 for node in result.nodes if node.pool.contains(tx_hash))
-        propagation_pct = 100 * nodes_with_tx / len(result.nodes)
+        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
+        propagation_pct = 100 * nodes_with_tx / len(sim.nodes)
 
-        # Target: >99% propagation
         assert propagation_pct > 99, f"Only reached {propagation_pct:.1f}% (target: >99%)"

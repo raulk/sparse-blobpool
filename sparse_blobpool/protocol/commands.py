@@ -8,7 +8,7 @@ over the network.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sparse_blobpool.core.base import Command
+from sparse_blobpool.core.events import Command
 
 if TYPE_CHECKING:
     from sparse_blobpool.core.types import Address, RequestId, TxHash
@@ -27,12 +27,7 @@ __all__ = [
 
 @dataclass
 class BroadcastTransaction(Command):
-    """Inject a new transaction into a node's pool and announce it.
-
-    This is not a network message but a local event used to inject transactions
-    into the simulation. The receiving node will add the tx to its pool and
-    announce to all peers as a provider.
-    """
+    """Inject a new transaction into a node's pool and announce it."""
 
     tx_hash: TxHash
     tx_sender: Address
@@ -44,34 +39,17 @@ class BroadcastTransaction(Command):
     blob_count: int
     cell_mask: int  # Cells the origin has (ALL_ONES for full blob)
 
-    @property
-    def size_bytes(self) -> int:
-        return 0
-
 
 @dataclass
 class ProduceBlock(Command):
-    """Request a node to produce a block for a given slot.
-
-    Sent by BlockProducer to the selected proposer node. The node will
-    select transactions from its pool, create the block, and broadcast
-    the BlockAnnouncement to all peers.
-    """
+    """Request a node to produce a block for a given slot."""
 
     slot: int
-
-    @property
-    def size_bytes(self) -> int:
-        return 0
 
 
 @dataclass
 class SlotTick(Command):
     """Periodic slot boundary tick for block production."""
-
-    @property
-    def size_bytes(self) -> int:
-        return 0
 
 
 @dataclass
@@ -80,10 +58,6 @@ class RequestTimeout(Command):
 
     request_id: RequestId
 
-    @property
-    def size_bytes(self) -> int:
-        return 0
-
 
 @dataclass
 class ProviderObservationTimeout(Command):
@@ -91,17 +65,9 @@ class ProviderObservationTimeout(Command):
 
     tx_hash: TxHash
 
-    @property
-    def size_bytes(self) -> int:
-        return 0
-
 
 @dataclass
 class TxCleanup(Command):
     """Delayed cleanup of a transaction after block inclusion."""
 
     tx_hash: TxHash
-
-    @property
-    def size_bytes(self) -> int:
-        return 0

@@ -46,31 +46,27 @@ This runs a 60-second simulation with 2000 nodes and outputs statistics includin
 
 ```python
 from sparse_blobpool.config import SimulationConfig
-from sparse_blobpool.scenarios.baseline import build_simulation, broadcast_transaction
+from sparse_blobpool.core.simulator import Simulator
 
-# Configure simulation
+# Configure and build simulation
 config = SimulationConfig(
     node_count=500,
     mesh_degree=30,
     provider_probability=0.15,
     duration=30.0,
 )
-
-# Build simulation
-result = build_simulation(config)
+sim = Simulator.build(config)
 
 # Inject transactions
 for _ in range(10):
-    broadcast_transaction(result)
+    sim.broadcast_transaction()
 
-# Start block production
-result.block_producer.start()
-
-# Run simulation
-result.simulator.run(30.0)
+# Start block production and run
+sim.block_producer.start()
+sim.run(30.0)
 
 # Get metrics
-metrics = result.finalize_metrics()
+metrics = sim.finalize_metrics()
 print(f"Bandwidth per blob: {metrics.bandwidth_per_blob / 1024:.1f} KB")
 print(f"Provider ratio: {metrics.observed_provider_ratio:.3f}")
 print(f"Propagation success: {metrics.propagation_success_rate * 100:.1f}%")
