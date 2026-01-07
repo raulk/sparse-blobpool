@@ -30,6 +30,10 @@ docker-build:
 server: docker-build
     sudo docker compose up
 
+# Build and run with trace-all (saves all run traces)
+server-trace: docker-build
+    sudo docker compose run --rm -p 8000:8000 fuzzer uv run fuzz --serve --trace-all
+
 # --- Development ---
 
 # Run frontend dev server (hot reload, proxies to port 8000)
