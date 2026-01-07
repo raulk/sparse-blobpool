@@ -126,7 +126,7 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 h-12 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-slate-600" />
-            <span className="font-semibold text-slate-900">Fuzzer Monitor</span>
+            <span className="font-semibold text-slate-900">Sparse blobpool fuzzer</span>
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-500">
             <span className="font-mono">{new Date().toLocaleTimeString()}</span>
@@ -241,7 +241,7 @@ function App() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {stats.recent_runs.map((run) => (
+                {[...stats.recent_runs].reverse().map((run) => (
                   <tr
                     key={run.run_id}
                     className={clsx(
@@ -341,7 +341,7 @@ function App() {
                 <>
                   {drawerTab === 'params' && (
                     <div className="space-y-4">
-                      <Section title="Run Info">
+                      <Section title="Run info">
                         <InfoRow label="Status">
                           <StatusBadge status={runDetails.status} />
                         </InfoRow>
@@ -384,14 +384,32 @@ function App() {
 
                   {drawerTab === 'logs' && (
                     <div className="space-y-4">
-                      <div className="text-xs text-slate-500 bg-slate-50 rounded p-3">
-                        Logs are available for flagged runs with trace files.
-                        <br />
-                        Run with <code className="bg-slate-200 px-1 rounded">--trace-all</code> to capture all logs.
-                      </div>
-                      {runDetails.trace_config && (
-                        <div className="text-xs text-slate-400">
-                          Trace directory: <code className="font-mono">fuzzer_output/{runDetails.run_id}/</code>
+                      {runDetails.trace_config || runDetails.trace_metrics ? (
+                        <>
+                          <div className="text-xs text-slate-400">
+                            Trace directory: <code className="font-mono">fuzzer_output/{runDetails.run_id}/</code>
+                          </div>
+                          {runDetails.trace_config && (
+                            <Section title="Trace config">
+                              <pre className="text-xs font-mono bg-slate-50 rounded p-3 overflow-x-auto whitespace-pre-wrap text-slate-700">
+                                {JSON.stringify(runDetails.trace_config, null, 2)}
+                              </pre>
+                            </Section>
+                          )}
+                          {runDetails.trace_metrics && (
+                            <Section title="Trace metrics">
+                              <pre className="text-xs font-mono bg-slate-50 rounded p-3 overflow-x-auto whitespace-pre-wrap text-slate-700">
+                                {JSON.stringify(runDetails.trace_metrics, null, 2)}
+                              </pre>
+                            </Section>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-xs text-slate-500 bg-slate-50 rounded p-3">
+                          No trace data available for this run.
+                          <br /><br />
+                          Traces are saved for flagged runs. Run with{' '}
+                          <code className="bg-slate-200 px-1 rounded">--trace-all</code> to capture all traces.
                         </div>
                       )}
                     </div>
@@ -530,11 +548,8 @@ function ConfigDisplay({ config }: { config?: Record<string, unknown> }) {
   }
 
   const formatLabel = (key: string): string => {
-    return key
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase())
-      .replace('Txs', 'TXs')
-      .replace('Tx ', 'TX ')
+    const label = key.replace(/_/g, ' ')
+    return label.charAt(0).toUpperCase() + label.slice(1)
   }
 
   const ParamGroup = ({ title, params }: { title: string; params: { key: string; value: unknown }[] }) => {
@@ -595,11 +610,8 @@ function MetricsDisplay({ metrics }: { metrics?: Record<string, unknown> }) {
   }
 
   const formatLabel = (key: string): string => {
-    return key
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase())
-      .replace('P99', 'P99')
-      .replace('Vs', 'vs')
+    const label = key.replace(/_/g, ' ')
+    return label.charAt(0).toUpperCase() + label.slice(1)
   }
 
   const getStatusColor = (key: string, value: number): string | undefined => {
@@ -634,9 +646,9 @@ function MetricsDisplay({ metrics }: { metrics?: Record<string, unknown> }) {
     <div className="space-y-4">
       <MetricGroup title="Bandwidth" items={getMetricsFromData(bandwidthMetrics)} />
       <MetricGroup title="Propagation" items={getMetricsFromData(propagationMetrics)} />
-      <MetricGroup title="Provider Coverage" items={getMetricsFromData(providerMetrics)} />
+      <MetricGroup title="Provider coverage" items={getMetricsFromData(providerMetrics)} />
       <MetricGroup title="Availability" items={getMetricsFromData(availabilityMetrics)} />
-      <MetricGroup title="Attack Resilience" items={getMetricsFromData(attackMetrics)} />
+      <MetricGroup title="Attack resilience" items={getMetricsFromData(attackMetrics)} />
     </div>
   )
 }
