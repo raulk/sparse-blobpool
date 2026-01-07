@@ -10,29 +10,29 @@ dev-backend:
 
 dev-frontend:
 	cd frontend && \
-	npm install && \
-	npm run dev
+	pnpm install && \
+	pnpm run dev
 
 # Docker
 build:
-	docker-compose build
+	docker compose build
 
 run:
-	docker-compose up -d
+	docker compose up -d
 
 stop:
-	docker-compose down
+	docker compose down
 
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 # Production
 deploy: build
-	docker-compose up -d --force-recreate
+	docker compose up -d --force-recreate
 
 # Utilities
 clean:
-	docker-compose down -v
+	docker compose down -v
 	rm -rf frontend/node_modules
 	rm -rf frontend/dist
 	rm -rf backend/__pycache__

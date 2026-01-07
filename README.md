@@ -232,7 +232,7 @@ A real-time monitoring dashboard for continuous fuzzer runs:
 
 ```bash
 cd fuzzer_ui
-docker-compose up -d
+docker compose up -d
 ```
 
 Access at http://localhost:3000

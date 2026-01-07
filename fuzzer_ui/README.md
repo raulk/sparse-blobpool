@@ -66,7 +66,7 @@ A minimalistic web UI for monitoring the sparse blobpool fuzzer in real-time.
 
 ```bash
 cd fuzzer_ui
-docker-compose up -d
+docker compose up -d
 ```
 
 Access at http://localhost:3000
@@ -83,8 +83,8 @@ uv run uvicorn main:app --reload --port 8000
 
 # Terminal 2: Frontend (from project root)
 cd fuzzer_ui/frontend
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 - Backend: http://localhost:8000
