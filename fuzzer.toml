@@ -1,0 +1,47 @@
+# Fuzzer Autopilot Configuration
+# Run with: uv run fuzz --config fuzzer.toml
+
+[execution]
+max_runs = 1000              # Number of runs (omit for unlimited)
+duration_slots = 5           # Duration: use duration_secs, duration_slots, or duration_epochs
+master_seed = 42             # For reproducibility (omit for random)
+trace_on_anomaly_only = true # Only save traces for anomalies
+
+[output]
+dir = "fuzzer_output"
+overview_file = "runs.ndjson"
+
+# Parameter ranges for randomized config generation
+
+[ranges.network]
+node_count = { min = 50, max = 2000 }
+mesh_degree = { min = 5, max = 100 }
+
+[ranges.protocol]
+provider_probability = { min = 0.05, max = 0.50 }
+min_providers_before_sample = { min = 1, max = 5 }
+extra_random_columns = { min = 0, max = 4 }
+max_columns_per_request = { min = 4, max = 16 }
+custody_columns = { min = 4, max = 16 }
+
+[ranges.timeouts]
+provider_observation_timeout = { min = 0.5, max = 5.0 }
+request_timeout = { min = 1.0, max = 10.0 }
+tx_expiration = { min = 60.0, max = 600.0 }
+
+[ranges.limits]
+blobpool_max_bytes = { min = 536870912, max = 4294967296 }  # 512MB to 4GB
+max_txs_per_sender = { min = 4, max = 32 }
+default_bandwidth = { min = 10485760, max = 209715200 }    # 10MB/s to 200MB/s
+
+[ranges.scenario]
+num_transactions = { min = 1, max = 20 }
+
+# Anomaly detection thresholds
+
+[thresholds]
+max_p99_propagation_time = 30.0           # Flag if > 30s
+min_reconstruction_success_rate = 0.95    # Flag if < 95%
+max_false_availability_rate = 0.05        # Flag if > 5%
+min_provider_coverage_ratio = 0.5         # Flag if < 50% of expected p
+min_local_availability_met = 0.90         # Flag if < 90% local availability

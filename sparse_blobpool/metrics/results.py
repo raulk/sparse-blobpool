@@ -46,6 +46,11 @@ class SimulationResults:
     reconstruction_success_rate: float  # Fraction of txs reconstructible
     false_availability_rate: float  # Appeared available but wasn't
 
+    # Sparse protocol metrics
+    provider_coverage: float  # Fraction of nodes that became providers per tx
+    expected_provider_coverage: float  # Expected provider probability from config
+    local_availability_met: float  # Fraction of nodes meeting local availability
+
     # Attack outcomes (populated when adversaries present)
     spam_amplification_factor: float = 0.0
     victim_blobpool_pollution: float = 0.0
@@ -70,6 +75,9 @@ class SimulationResults:
             "observed_provider_ratio": self.observed_provider_ratio,
             "reconstruction_success_rate": self.reconstruction_success_rate,
             "false_availability_rate": self.false_availability_rate,
+            "provider_coverage": self.provider_coverage,
+            "expected_provider_coverage": self.expected_provider_coverage,
+            "local_availability_met": self.local_availability_met,
             "spam_amplification_factor": self.spam_amplification_factor,
             "victim_blobpool_pollution": self.victim_blobpool_pollution,
             "withholding_detection_rate": self.withholding_detection_rate,

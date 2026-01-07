@@ -12,12 +12,14 @@ class TestMetricsCollector:
         sim = Simulator()
         metrics = MetricsCollector(simulator=sim)
 
-        metrics.register_node(ActorId("node1"), "united states")
-        metrics.register_node(ActorId("node2"), "germany")
+        metrics.register_node(ActorId("node1"), "united states", custody_mask=0xFF)
+        metrics.register_node(ActorId("node2"), "germany", custody_mask=0xFF00)
 
         assert metrics.node_count == 2
         assert metrics.node_countries[ActorId("node1")] == "united states"
         assert metrics.node_countries[ActorId("node2")] == "germany"
+        assert metrics.node_custody_masks[ActorId("node1")] == 0xFF
+        assert metrics.node_custody_masks[ActorId("node2")] == 0xFF00
 
     def test_record_bandwidth(self) -> None:
         sim = Simulator()

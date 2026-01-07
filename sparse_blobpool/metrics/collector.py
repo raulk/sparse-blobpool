@@ -51,6 +51,7 @@ class MetricsCollector:
     simulator: Simulator
     sample_interval: float = 1.0
     node_count: int = 0  # Set during initialization
+    expected_provider_probability: float = 0.15  # From config
 
     # Bandwidth tracking (cumulative)
     bytes_sent: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
@@ -60,6 +61,9 @@ class MetricsCollector:
 
     # Country tracking
     node_countries: dict[ActorId, Country] = field(default_factory=dict)
+
+    # Custody mask tracking (for local availability calculation)
+    node_custody_masks: dict[ActorId, int] = field(default_factory=dict)
 
     # Timeseries
     bandwidth_timeseries: list[BandwidthSnapshot] = field(default_factory=list)
@@ -80,8 +84,9 @@ class MetricsCollector:
     _control_bytes: int = 0
     _data_bytes: int = 0
 
-    def register_node(self, node_id: ActorId, country: Country) -> None:
+    def register_node(self, node_id: ActorId, country: Country, custody_mask: int) -> None:
         self.node_countries[node_id] = country
+        self.node_custody_masks[node_id] = custody_mask
         self.node_count += 1
 
     def record_bandwidth(
@@ -234,6 +239,36 @@ class MetricsCollector:
         naive_bandwidth = FULL_BLOB_SIZE * self.node_count * total_txs
         bandwidth_reduction = naive_bandwidth / self._total_bytes if self._total_bytes > 0 else 0.0
 
+        # Provider coverage: average fraction of nodes that became providers per tx
+        # (among nodes that saw each tx)
+        provider_coverages = []
+        for metrics in self.tx_metrics.values():
+            nodes_seen = len(metrics.nodes_seen)
+            if nodes_seen > 0:
+                provider_coverages.append(metrics.provider_count / nodes_seen)
+        provider_coverage = (
+            sum(provider_coverages) / len(provider_coverages) if provider_coverages else 0.0
+        )
+
+        # Local availability met: fraction of nodes meeting local availability
+        # Providers need full blob (ALL_ONES), samplers need custody columns
+        local_availability_count = 0
+        total_node_tx_pairs = 0
+
+        for metrics in self.tx_metrics.values():
+            for node_id, cell_mask in metrics.cell_masks.items():
+                total_node_tx_pairs += 1
+                if cell_mask == ALL_ONES:
+                    local_availability_count += 1
+                else:
+                    custody_mask = self.node_custody_masks.get(node_id, 0)
+                    if (cell_mask & custody_mask) == custody_mask:
+                        local_availability_count += 1
+
+        local_availability_met = (
+            local_availability_count / total_node_tx_pairs if total_node_tx_pairs > 0 else 0.0
+        )
+
         return SimulationResults(
             # Bandwidth
             total_bandwidth_bytes=self._total_bytes,
@@ -253,6 +288,10 @@ class MetricsCollector:
                 reconstruction_successes / total_txs if total_txs > 0 else 0.0
             ),
             false_availability_rate=0.0,  # Requires adversary scenario to measure
+            # Sparse protocol metrics
+            provider_coverage=provider_coverage,
+            expected_provider_coverage=self.expected_provider_probability,
+            local_availability_met=local_availability_met,
             # Attack outcomes
             spam_amplification_factor=(
                 self.spam_accepted / (self.spam_accepted + self.spam_rejected)

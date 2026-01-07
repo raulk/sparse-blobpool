@@ -31,6 +31,21 @@ uv sync
 
 ## Quick Start
 
+### Run Fuzzer Autopilot
+
+```bash
+# Run 100 randomized simulations
+uv run fuzz --max-runs 100 --duration-slots 5 --seed 42
+
+# Replay a specific run by seed
+uv run fuzz --replay 478163327
+
+# Use TOML configuration
+uv run fuzz --config fuzzer.toml
+```
+
+The fuzzer continuously generates randomized configs, runs baseline scenarios, and detects anomalies. Output is logged to `fuzzer_output/runs.ndjson` with trace directories for anomalous runs.
+
 ### Run Baseline Scenario
 
 ```bash
@@ -120,6 +135,44 @@ print(f"Poison txs injected: {result.poison_txs_injected}")
 print(f"Victim pool size: {result.victim_pool_size}")
 ```
 
+## Fuzzer Autopilot
+
+The fuzzer runs continuous randomized testing with configurable parameter ranges and anomaly detection.
+
+### CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `--max-runs N` | Maximum runs (default: unlimited) |
+| `--duration-secs N` | Duration in seconds |
+| `--duration-slots N` | Duration in slots (1 slot = 12s) |
+| `--duration-epochs N` | Duration in epochs (1 epoch = 32 slots) |
+| `--seed N` | Master seed for reproducibility |
+| `--replay SEED` | Replay a specific run |
+| `--config FILE` | TOML configuration file |
+| `--trace-all` | Save traces for all runs, not just anomalies |
+
+### Anomaly Detection
+
+The fuzzer flags runs where metrics fall outside expected ranges:
+
+| Threshold | Default | Description |
+|-----------|---------|-------------|
+| `max_p99_propagation_time` | 30.0s | Maximum p99 latency |
+| `min_reconstruction_success_rate` | 0.95 | Minimum reconstruction rate |
+| `max_false_availability_rate` | 0.05 | Maximum false availability |
+| `min_provider_coverage_ratio` | 0.5 | Minimum ratio vs expected p |
+| `min_local_availability_met` | 0.90 | Minimum local availability |
+
+### Output Format
+
+```
+[memorable-run-id] BASELINE seed=12345 ... OK (1.2s)
+[another-run-id] BASELINE seed=67890 ... ATTENTION(low_local_availability) (2.3s)
+```
+
+Anomalous runs save `config.json` and `metrics.json` to `fuzzer_output/<run-id>/`.
+
 ## Configuration
 
 ### SimulationConfig
@@ -175,7 +228,8 @@ sparse_blobpool/
 ├── p2p/            # Node actor, topology generation
 ├── metrics/        # MetricsCollector, SimulationResults
 ├── adversaries/    # Attack implementations
-└── scenarios/      # Runnable scenarios
+├── scenarios/      # Runnable scenarios
+└── fuzzer/         # Fuzzer autopilot (config, generator, executor)
 ```
 
 ### Actor Model
