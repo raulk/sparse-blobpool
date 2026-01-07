@@ -331,11 +331,7 @@ def main() -> None:
 
         print(f"\nFuzzing complete. Server still running at http://localhost:{args.port}")
         print("Press Ctrl+C to exit.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+        signal.pause()
     elif args.replay is not None:
         replay_run(args.replay, fuzzer_config)
     else:

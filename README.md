@@ -238,11 +238,17 @@ A real-time monitoring dashboard for continuous fuzzer runs.
 # Install with serve dependencies
 uv sync --extra serve
 
-# Terminal 1: Start the monitoring server
-uv run fuzz --serve --port 8000
+# Run fuzzer with live monitoring dashboard
+uv run fuzz --serve --max-runs 100
 
-# Terminal 2: Run the fuzzer
-uv run fuzz --max-runs 100
+# Server stays alive after fuzzing for result inspection
+# Press Ctrl+C to exit
+```
+
+Or run server-only mode:
+
+```bash
+uv run fuzz --serve  # Just the dashboard, no fuzzing
 ```
 
 Access the dashboard at http://localhost:8000 (requires frontend build) or run the frontend dev server:
