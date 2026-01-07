@@ -6,5 +6,7 @@ services:
       - "8000:8000"
     volumes:
       - ./fuzzer_output:/app/fuzzer_output
-    command: uv run fuzz --serve
+    # Fuzz continuously (10000 runs) with dashboard
+    # Change --max-runs or remove for serve-only mode
+    command: uv run fuzz --serve --max-runs 10000
     restart: unless-stopped
