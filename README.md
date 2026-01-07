@@ -15,15 +15,15 @@ This simulator models the sparse blobpool protocol where nodes probabilistically
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.14+
 - [uv](https://docs.astral.sh/uv/) package manager
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/raulk/sparse-blobpool-sim.git
-cd sparse-blobpool-sim
+git clone https://github.com/raulk/sparse-blobpool.git
+cd sparse-blobpool
 
 # Install dependencies
 uv sync
@@ -158,6 +158,8 @@ The fuzzer runs continuous randomized testing with configurable parameter ranges
 | `--replay SEED` | Replay a specific run |
 | `--config FILE` | TOML configuration file |
 | `--trace-all` | Save traces for all runs, not just anomalies |
+| `--serve` | Start the monitoring dashboard server |
+| `--port N` | Port for the monitoring server (default: 8000) |
 
 ### Anomaly Detection
 
@@ -228,14 +230,35 @@ print(json.dumps(metrics.to_dict(), indent=2))
 
 ## Fuzzer Web UI
 
-A real-time monitoring dashboard for continuous fuzzer runs:
+A real-time monitoring dashboard for continuous fuzzer runs.
+
+### Quick start
 
 ```bash
-cd fuzzer_ui
-docker compose up -d
+# Install with serve dependencies
+uv sync --extra serve
+
+# Run fuzzer with live monitoring dashboard
+uv run fuzz --serve --max-runs 100
+
+# Server stays alive after fuzzing for result inspection
+# Press Ctrl+C to exit
 ```
 
-Access at http://localhost:3000
+Or run server-only mode:
+
+```bash
+uv run fuzz --serve  # Just the dashboard, no fuzzing
+```
+
+Access the dashboard at http://localhost:8000 (requires frontend build) or run the frontend dev server:
+
+```bash
+# Terminal 3: Frontend development
+cd web && pnpm install && pnpm dev
+```
+
+Access at http://localhost:5173 (proxies API to backend)
 
 **Features:**
 - Live run status with WebSocket updates
@@ -247,8 +270,8 @@ Access at http://localhost:3000
   - **Logs**: Trace file location for flagged runs
 
 **Stack:**
-- Frontend: React + TypeScript + Vite + TailwindCSS + pnpm
-- Backend: FastAPI + WebSockets
+- Backend: FastAPI + WebSockets (integrated in `sparse_blobpool.fuzzer.server`)
+- Frontend: React + TypeScript + Vite + TailwindCSS (in `web/`)
 - Charts: Recharts
 
 ## Architecture
@@ -266,8 +289,9 @@ sparse_blobpool/
 │       ├── spam.py
 │       ├── withholding.py
 │       └── poisoning.py
-├── fuzzer/         # Fuzzer autopilot (config, generator, executor)
-└── tests/          # 206+ tests with hypothesis
+└── fuzzer/         # Fuzzer autopilot + monitoring server
+tests/              # 230+ tests with hypothesis
+web/                # React frontend for fuzzer monitoring
 ```
 
 ### Actor Model

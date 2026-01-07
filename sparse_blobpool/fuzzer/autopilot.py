@@ -267,6 +267,17 @@ def main() -> None:
         metavar="SEED",
         help="Replay a single run with the given seed",
     )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Start the monitoring dashboard server",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for the monitoring server (default: 8000)",
+    )
 
     args = parser.parse_args()
 
@@ -302,10 +313,20 @@ def main() -> None:
             master_seed=args.seed,
         )
 
+    if args.serve:
+        from sparse_blobpool.fuzzer.server import start_server_background
+
+        start_server_background(args.output_dir, port=args.port)
+
     if args.replay is not None:
         replay_run(args.replay, fuzzer_config)
     else:
         run_fuzzer(fuzzer_config)
+
+    if args.serve and args.max_runs is not None:
+        print(f"\nFuzzing complete. Server still running at http://localhost:{args.port}")
+        print("Press Ctrl+C to exit.")
+        signal.pause()
 
 
 if __name__ == "__main__":
