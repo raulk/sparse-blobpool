@@ -94,7 +94,10 @@ class FuzzerConfig:
         elif "duration_slots" in execution:
             duration = execution["duration_slots"] * SLOT_DURATION_SECS + slot_tail_buffer
         elif "duration_epochs" in execution:
-            duration = execution["duration_epochs"] * SLOTS_PER_EPOCH * SLOT_DURATION_SECS + slot_tail_buffer
+            duration = (
+                execution["duration_epochs"] * SLOTS_PER_EPOCH * SLOT_DURATION_SECS
+                + slot_tail_buffer
+            )
         else:
             duration = DEFAULT_DURATION_SLOTS * SLOT_DURATION_SECS + slot_tail_buffer
 

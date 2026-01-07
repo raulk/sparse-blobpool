@@ -246,7 +246,9 @@ class MetricsCollector:
             nodes_seen = len(metrics.nodes_seen)
             if nodes_seen > 0:
                 provider_coverages.append(metrics.provider_count / nodes_seen)
-        provider_coverage = sum(provider_coverages) / len(provider_coverages) if provider_coverages else 0.0
+        provider_coverage = (
+            sum(provider_coverages) / len(provider_coverages) if provider_coverages else 0.0
+        )
 
         # Local availability met: fraction of nodes meeting local availability
         # Providers need full blob (ALL_ONES), samplers need custody columns

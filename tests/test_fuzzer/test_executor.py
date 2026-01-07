@@ -187,7 +187,10 @@ def test_determine_status_success() -> None:
 
 
 def test_determine_status_attention() -> None:
-    assert determine_status([("low_provider_coverage", "some anomaly")], None) == "ATTENTION(low_provider_coverage)"
+    assert (
+        determine_status([("low_provider_coverage", "some anomaly")], None)
+        == "ATTENTION(low_provider_coverage)"
+    )
 
 
 def test_determine_status_attention_multiple() -> None:

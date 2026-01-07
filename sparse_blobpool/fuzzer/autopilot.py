@@ -56,13 +56,9 @@ def write_trace(
     trace_dir.mkdir(parents=True, exist_ok=True)
 
     config_with_seed = {**config, "seed": seed}
-    (trace_dir / "config.json").write_text(
-        json.dumps(config_with_seed, indent=2), encoding="utf-8"
-    )
+    (trace_dir / "config.json").write_text(json.dumps(config_with_seed, indent=2), encoding="utf-8")
 
-    (trace_dir / "metrics.json").write_text(
-        json.dumps(metrics, indent=2), encoding="utf-8"
-    )
+    (trace_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
 
 def run_fuzzer(config: FuzzerConfig) -> None:
@@ -102,9 +98,7 @@ def run_fuzzer(config: FuzzerConfig) -> None:
         start_time = datetime.now(UTC)
         wall_start = time.monotonic()
 
-        results, error = execute_baseline(
-            sim_config, num_transactions, config.simulation_duration
-        )
+        results, error = execute_baseline(sim_config, num_transactions, config.simulation_duration)
 
         wall_end = time.monotonic()
         end_time = datetime.now(UTC)
@@ -142,7 +136,9 @@ def run_fuzzer(config: FuzzerConfig) -> None:
 
         should_trace = not config.trace_on_anomaly_only or not status.startswith("success")
         if should_trace:
-            write_trace(config.output_dir, run_id, config_to_dict(sim_config), metrics_dict, run_seed)
+            write_trace(
+                config.output_dir, run_id, config_to_dict(sim_config), metrics_dict, run_seed
+            )
 
         run_count += 1
 
@@ -151,9 +147,7 @@ def replay_run(seed: int, config: FuzzerConfig) -> None:
     run_rng = Random(seed)
 
     run_id = generate_run_id(run_rng)
-    num_transactions = generate_num_transactions(
-        run_rng, config.parameter_ranges.num_transactions
-    )
+    num_transactions = generate_num_transactions(run_rng, config.parameter_ranges.num_transactions)
 
     sim_config = generate_simulation_config(
         run_rng,
@@ -169,9 +163,7 @@ def replay_run(seed: int, config: FuzzerConfig) -> None:
     start_time = datetime.now(UTC)
     wall_start = time.monotonic()
 
-    results, error = execute_baseline(
-        sim_config, num_transactions, config.simulation_duration
-    )
+    results, error = execute_baseline(sim_config, num_transactions, config.simulation_duration)
 
     wall_end = time.monotonic()
     end_time = datetime.now(UTC)
@@ -224,9 +216,7 @@ def main() -> None:
         ParameterRanges,
     )
 
-    parser = argparse.ArgumentParser(
-        description="Fuzzer autopilot for sparse blobpool simulation"
-    )
+    parser = argparse.ArgumentParser(description="Fuzzer autopilot for sparse blobpool simulation")
     parser.add_argument(
         "--config",
         type=Path,
