@@ -26,6 +26,10 @@ fuzz-forever: build-web
 docker-build:
     docker build -t sparse-blobpool-fuzzer .
 
+# Build and run containerized fuzzer with dashboard
+server: docker-build
+    docker compose up
+
 # --- Development ---
 
 # Run frontend dev server (hot reload, proxies to port 8000)
