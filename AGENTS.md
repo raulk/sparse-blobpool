@@ -17,7 +17,9 @@ This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key co
     - `withholding.py` - T2.1 selective column withholding
     - `poisoning.py` - T4.2 targeted availability signaling
 - `sparse_blobpool/fuzzer/` - Fuzzer autopilot for continuous randomized testing
-- `fuzzer_ui/` - Web monitoring dashboard (FastAPI + React)
+- `fuzzer_ui/` - Web monitoring dashboard
+  - `backend/` - FastAPI + WebSockets (Python, uv)
+  - `frontend/` - React + TypeScript + Vite + TailwindCSS (pnpm)
 - `tests/` - 210+ tests with hypothesis property-based testing
 
 ## Python version

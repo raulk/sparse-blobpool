@@ -237,11 +237,19 @@ docker compose up -d
 
 Access at http://localhost:3000
 
-Features:
+**Features:**
 - Live run status with WebSocket updates
-- Success/attention/error rate charts
-- Anomaly distribution analysis
-- Searchable run history
+- Success/flagged/error rate distribution
+- Anomaly frequency charts
+- Click any run to view details in slide-out drawer:
+  - **Parameters**: Network, protocol, timing, blobpool config
+  - **Metrics**: Bandwidth, propagation, availability, attack resilience
+  - **Logs**: Trace file location for flagged runs
+
+**Stack:**
+- Frontend: React + TypeScript + Vite + TailwindCSS + pnpm
+- Backend: FastAPI + WebSockets
+- Charts: Recharts
 
 ## Architecture
 
