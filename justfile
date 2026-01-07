@@ -1,32 +1,50 @@
 # Fuzzer monitoring dashboard
 
-# Build the frontend
+image := "sparse-blobpool-fuzzer"
+docker := "sudo docker"
+
+# Build Docker image
+build:
+    {{docker}} build -t {{image}} .
+
+# Run dashboard server only
+serve: build
+    {{docker}} run --rm -it -p 8000:8000 -v ./fuzzer_output:/app/fuzzer_output {{image}}
+
+# Run fuzzer with dashboard
+fuzz runs="100": build
+    {{docker}} run --rm -it -p 8000:8000 -v ./fuzzer_output:/app/fuzzer_output {{image}} \
+        uv run fuzz --serve --max-runs {{runs}}
+
+# Run continuous fuzzer with dashboard
+fuzz-continuous: build
+    {{docker}} run --rm -it -p 8000:8000 -v ./fuzzer_output:/app/fuzzer_output {{image}} \
+        uv run fuzz --serve --max-runs 1000
+
+# Run indefinitely with dashboard (Ctrl+C to stop)
+fuzz-forever: build
+    {{docker}} run --rm -it -p 8000:8000 -v ./fuzzer_output:/app/fuzzer_output {{image}} \
+        uv run fuzz --serve
+
+# --- Local development (no Docker) ---
+
+# Build frontend locally
 build-web:
     cd web && pnpm install && pnpm exec tsc && pnpm exec vite build
 
-# Run fuzzer with monitoring dashboard (requires built frontend)
-fuzz-serve:
+# Run server locally (requires built frontend)
+dev: build-web
     uv run fuzz --serve
 
-# Build frontend and run fuzzer with dashboard
-fuzz-ui: build-web
-    uv run fuzz --serve
-
-# Run continuous fuzzer with dashboard
-fuzz-continuous: build-web
-    uv run fuzz --serve --max-runs 1000
-
-# Run fuzzer with specific run count and dashboard
-fuzz-n runs="100": build-web
-    uv run fuzz --serve --max-runs {{runs}}
-
-# Development: run frontend dev server (API proxy to port 8000)
+# Run frontend dev server (hot reload, proxies API to port 8000)
 dev-web:
     cd web && pnpm install && pnpm dev
 
-# Development: run API server only
+# Run API server only (no frontend)
 dev-api:
     uv run fuzz --serve
+
+# --- Testing ---
 
 # Run tests
 test:
