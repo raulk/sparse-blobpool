@@ -166,7 +166,10 @@ class Simulator:
             config = SimulationConfig()
 
         simulator = cls(seed=config.seed)
-        metrics = MetricsCollector(simulator=simulator)
+        metrics = MetricsCollector(
+            simulator=simulator,
+            expected_provider_probability=config.provider_probability,
+        )
 
         network = Network(
             simulator=simulator,
@@ -189,7 +192,7 @@ class Simulator:
             nodes.append(node)
 
             network.register_node(actor_id, country)
-            metrics.register_node(actor_id, country)
+            metrics.register_node(actor_id, country, node.custody_mask)
 
         node_lookup = {node.id: node for node in nodes}
 
