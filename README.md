@@ -89,50 +89,57 @@ print(f"Propagation success: {metrics.propagation_success_rate * 100:.1f}%")
 
 ## Attack Scenarios
 
+Self-contained attack scenarios with adversary logic included:
+
 ### Spam Attack (T1.1/T1.2)
 
 Flood the network with garbage transactions:
 
-```bash
-uv run python -m sparse_blobpool.scenarios.spam_attack
-```
-
 ```python
-from sparse_blobpool.adversaries.spam import SpamAttackConfig
-from sparse_blobpool.scenarios.spam_attack import run_spam_attack
+from sparse_blobpool.scenarios import run_spam_scenario, SpamScenarioConfig
 
-attack_config = SpamAttackConfig(
-    spam_rate=50.0,      # 50 txs/second
-    valid_headers=True,   # Valid tx structure
-    provide_data=False,   # But no actual data
-    start_time=1.0,
+attack_config = SpamScenarioConfig(
+    spam_rate=50.0,           # 50 txs/second
+    valid_headers=True,       # T1.1: valid structure, unavailable data
+    num_attacker_nodes=2,
+    target_fraction=0.5,      # Target 50% of nodes
 )
 
-result = run_spam_attack(attack_config=attack_config)
-print(f"Spam txs injected: {result.spam_txs_injected}")
+sim = run_spam_scenario(attack_config=attack_config, run_duration=30.0)
+metrics = sim.finalize_metrics()
+```
+
+### Withholding Attack (T2.1)
+
+Serve custody cells but withhold reconstruction data:
+
+```python
+from sparse_blobpool.scenarios import run_withholding_scenario, WithholdingScenarioConfig
+
+attack_config = WithholdingScenarioConfig(
+    columns_to_serve=frozenset(range(32)),  # Only serve first 32 columns
+    attacker_fraction=0.1,                   # 10% of nodes are adversaries
+)
+
+sim = run_withholding_scenario(attack_config=attack_config, run_duration=30.0)
+metrics = sim.finalize_metrics()
 ```
 
 ### Targeted Poisoning Attack (T4.2)
 
-Signal transaction availability only to a victim:
-
-```bash
-uv run python -m sparse_blobpool.scenarios.poisoning
-```
+Signal transaction availability only to victim nodes:
 
 ```python
-from sparse_blobpool.adversaries.poisoning import TargetedPoisoningConfig
-from sparse_blobpool.scenarios.poisoning import run_poisoning_attack
+from sparse_blobpool.scenarios import run_poisoning_scenario, PoisoningScenarioConfig
 
-attack_config = TargetedPoisoningConfig(
-    num_attacker_connections=4,
+attack_config = PoisoningScenarioConfig(
+    num_victims=3,
     nonce_chain_length=16,
     injection_interval=0.1,
 )
 
-result = run_poisoning_attack(attack_config=attack_config)
-print(f"Poison txs injected: {result.poison_txs_injected}")
-print(f"Victim pool size: {result.victim_pool_size}")
+sim = run_poisoning_scenario(attack_config=attack_config, run_duration=30.0)
+metrics = sim.finalize_metrics()
 ```
 
 ## Fuzzer Autopilot
@@ -219,17 +226,48 @@ import json
 print(json.dumps(metrics.to_dict(), indent=2))
 ```
 
+## Fuzzer Web UI
+
+A real-time monitoring dashboard for continuous fuzzer runs:
+
+```bash
+cd fuzzer_ui
+docker compose up -d
+```
+
+Access at http://localhost:3000
+
+**Features:**
+- Live run status with WebSocket updates
+- Success/flagged/error rate distribution
+- Anomaly frequency charts
+- Click any run to view details in slide-out drawer:
+  - **Parameters**: Network, protocol, timing, blobpool config
+  - **Metrics**: Bandwidth, propagation, availability, attack resilience
+  - **Logs**: Trace file location for flagged runs
+
+**Stack:**
+- Frontend: React + TypeScript + Vite + TailwindCSS + pnpm
+- Backend: FastAPI + WebSockets
+- Charts: Recharts
+
 ## Architecture
 
 ```
 sparse_blobpool/
 ├── core/           # Simulator, Actor, Network, BlockProducer
-├── protocol/       # Messages, Blobpool, constants
-├── p2p/            # Node actor, topology generation
+├── actors/         # Node (honest.py), BlockProducer
+├── protocol/       # eth/71 messages, blobpool state
+├── p2p/            # Topology generation
 ├── metrics/        # MetricsCollector, SimulationResults
-├── adversaries/    # Attack implementations
 ├── scenarios/      # Runnable scenarios
-└── fuzzer/         # Fuzzer autopilot (config, generator, executor)
+│   ├── baseline.py
+│   └── attacks/    # Attack scenarios with adversary logic
+│       ├── spam.py
+│       ├── withholding.py
+│       └── poisoning.py
+├── fuzzer/         # Fuzzer autopilot (config, generator, executor)
+└── tests/          # 206+ tests with hypothesis
 ```
 
 ### Actor Model
