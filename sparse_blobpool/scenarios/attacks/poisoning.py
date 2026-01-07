@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import TYPE_CHECKING
 
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor
@@ -17,9 +16,6 @@ from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, Address, TxHash
 from sparse_blobpool.protocol.constants import ALL_ONES
 from sparse_blobpool.protocol.messages import NewPooledTransactionHashes
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass

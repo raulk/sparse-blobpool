@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import TYPE_CHECKING
 
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor
@@ -17,9 +16,6 @@ from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.protocol.constants import ALL_ONES
 from sparse_blobpool.protocol.messages import NewPooledTransactionHashes
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass
@@ -158,9 +154,7 @@ def run_spam_scenario(
     sim = Simulator.build(config)
 
     all_node_ids = [node.id for node in sim.nodes]
-    controlled_nodes = _select_attacker_nodes(
-        sim, attack_config.num_attacker_nodes, all_node_ids
-    )
+    controlled_nodes = _select_attacker_nodes(sim, attack_config.num_attacker_nodes, all_node_ids)
 
     adversary_id = ActorId("spam_adversary")
     adversary = SpamAdversary(

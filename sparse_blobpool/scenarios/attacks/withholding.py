@@ -7,7 +7,6 @@ Detection relies on C_extra sampling (honest nodes sample extra columns beyond c
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor
@@ -16,17 +15,12 @@ from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId
 from sparse_blobpool.protocol.messages import Cells, GetCells
 
-if TYPE_CHECKING:
-    pass
-
 
 @dataclass(frozen=True)
 class WithholdingScenarioConfig:
     """Configuration for withholding attack scenario."""
 
-    columns_to_serve: frozenset[int] = field(
-        default_factory=lambda: frozenset(range(64))
-    )
+    columns_to_serve: frozenset[int] = field(default_factory=lambda: frozenset(range(64)))
     delay_other_columns: float | None = None
     num_attacker_nodes: int = 1
     attacker_fraction: float | None = None
