@@ -633,7 +633,7 @@ The sparse blobpool introduces probabilistic data availability into Ethereum's e
 
 #### T4.2: Selective availability signaling attack (nonce gap variant)
 
-> **Source:** Analysis refined from [adversarial-peers.md](file:///Users/raul/W/ethereum/sparse-blobpool-sim/specs/adversarial-peers.md)
+> **Source:** Analysis refined from [adversarial-peers.md](file:///Users/raul/W/ethereum/sparse-blobpool/specs/adversarial-peers.md)
 
 **Description:** Attacker connects k nodes to victim, signals availability **exclusively to the victim** while withholding from the rest of the network. The attacker then chains sequential transactions (A0, A1, A2...) using the same sender address, poisoning the victim's blobpool with transactions that will never be included.
 
@@ -1469,11 +1469,11 @@ Proposer Deanonymization
 
 ## References
 
-1. [EIP-8070: Sparse Blobpool](file:///Users/raul/W/ethereum/sparse-blobpool-sim/specs/eip-8070.md)
-2. [Sparse Blobpool Meeting Notes](file:///Users/raul/W/ethereum/sparse-blobpool-sim/specs/sparse-blobpool-meeting.md)
-3. [Sparse Blobpool Meeting 2 Notes](file:///Users/raul/W/ethereum/sparse-blobpool-sim/specs/sparse-blobpool-meeting-2.md)
-4. [Sparse-mempool with Blobpool Tickets](file:///Users/raul/W/ethereum/sparse-blobpool-sim/specs/Sparse-mempool%20with%20Blobpool%20tickets.md)
-5. [Blob Ticket FAQ & Resources](file:///Users/raul/W/ethereum/sparse-blobpool-sim/specs/Blob%20Ticket%20FAQ%20%26%20Resources%202d8d9895554181d4b095c772242c7ba8.md)
+1. [EIP-8070: Sparse Blobpool](file:///Users/raul/W/ethereum/sparse-blobpool/specs/eip-8070.md)
+2. [Sparse Blobpool Meeting Notes](file:///Users/raul/W/ethereum/sparse-blobpool/specs/sparse-blobpool-meeting.md)
+3. [Sparse Blobpool Meeting 2 Notes](file:///Users/raul/W/ethereum/sparse-blobpool/specs/sparse-blobpool-meeting-2.md)
+4. [Sparse-mempool with Blobpool Tickets](file:///Users/raul/W/ethereum/sparse-blobpool/specs/Sparse-mempool%20with%20Blobpool%20tickets.md)
+5. [Blob Ticket FAQ & Resources](file:///Users/raul/W/ethereum/sparse-blobpool/specs/Blob%20Ticket%20FAQ%20%26%20Resources%202d8d9895554181d4b095c772242c7ba8.md)
 6. [Variants of Mempool Tickets - Ethereum Research](https://ethresear.ch/t/variants-of-mempool-tickets/23338)
 7. [On the Future of the Blob Mempool - Ethereum Research](https://ethresear.ch/t/on-the-future-of-the-blob-mempool/22613)
-8. [Sparse Blobpool Adversarial Peers Analysis](file:///Users/raul/W/ethereum/sparse-blobpool-sim/specs/adversarial-peers.md)
+8. [Sparse Blobpool Adversarial Peers Analysis](file:///Users/raul/W/ethereum/sparse-blobpool/specs/adversarial-peers.md)

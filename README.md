@@ -22,8 +22,8 @@ This simulator models the sparse blobpool protocol where nodes probabilistically
 
 ```bash
 # Clone the repository
-git clone https://github.com/raulk/sparse-blobpool-sim.git
-cd sparse-blobpool-sim
+git clone https://github.com/raulk/sparse-blobpool.git
+cd sparse-blobpool
 
 # Install dependencies
 uv sync
