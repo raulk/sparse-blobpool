@@ -57,3 +57,7 @@ fuzzer_ui/
 
 # Fuzzer runtime output
 fuzzer_output/
+
+# claude-mem generated CLAUDE.md files (keep root only)
+**/CLAUDE.md
+!/CLAUDE.md

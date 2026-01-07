@@ -7,12 +7,18 @@ Guidelines for AI agents working on the sparse blobpool simulator.
 This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key components:
 
 - `sparse_blobpool/core/` - Simulator engine, Actor base, Network with CoDel
-- `sparse_blobpool/actors/` - Actor implementations (Node in `honest.py`, BlockProducer, adversaries)
+- `sparse_blobpool/actors/` - Actor implementations (Node in `honest.py`, BlockProducer)
 - `sparse_blobpool/p2p/` - Topology generation
 - `sparse_blobpool/protocol/` - eth/71 messages, blobpool state
 - `sparse_blobpool/scenarios/` - Runnable simulation scenarios
+  - `baseline.py` - Honest network scenario
+  - `attacks/` - Attack scenarios with self-contained adversary logic
+    - `spam.py` - T1.1/T1.2 spam flood attack
+    - `withholding.py` - T2.1 selective column withholding
+    - `poisoning.py` - T4.2 targeted availability signaling
 - `sparse_blobpool/fuzzer/` - Fuzzer autopilot for continuous randomized testing
-- `tests/` - 215+ tests with hypothesis property-based testing
+- `fuzzer_ui/` - Web monitoring dashboard (FastAPI + React)
+- `tests/` - 210+ tests with hypothesis property-based testing
 
 ## Python version
 
