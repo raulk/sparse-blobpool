@@ -27,11 +27,3 @@ This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key co
 **Python 3.14+** required (overrides global 3.12+ default).
 
 **Property-based tests** live in `tests/test_role_distribution.py`.
-
-## Change scope
-
-Adapt to the task:
-
-- **Bug fixes**: Minimal, focused diffs. Don't refactor unrelated code.
-- **Refactoring**: Broader changes acceptable. Maintain behavior, improve structure.
-- **New features**: Follow existing patterns. Propose new patterns only with justification.

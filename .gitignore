@@ -53,9 +53,8 @@ Thumbs.db
 thoughts/ledgers/
 
 # Web UI runtime artifacts
-fuzzer_ui/backend/.venv/
-fuzzer_ui/frontend/node_modules/
-fuzzer_ui/frontend/dist/
+web/node_modules/
+web/dist/
 
 # Fuzzer runtime output
 fuzzer_output/

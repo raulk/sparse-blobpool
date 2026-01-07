@@ -13,7 +13,8 @@ if TYPE_CHECKING:
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -58,7 +59,7 @@ class ConnectionManager:
                 await connection.send_text(message)
 
 
-def create_app(output_dir: Path) -> FastAPI:
+def create_app(output_dir: Path, static_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="Fuzzer Monitor API")
     manager = ConnectionManager()
     runs_file = output_dir / "runs.ndjson"
@@ -70,6 +71,8 @@ def create_app(output_dir: Path) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    index_html = static_dir / "index.html" if static_dir else None
 
     async def watch_ndjson_file() -> None:
         last_position = 0
@@ -200,15 +203,44 @@ def create_app(output_dir: Path) -> FastAPI:
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+    if static_dir and static_dir.exists() and index_html and index_html.exists():
+        app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+
+        @app.get("/{path:path}")
+        async def serve_spa(path: str) -> FileResponse:
+            file_path = static_dir / path
+            if file_path.exists() and file_path.is_file():
+                return FileResponse(file_path)
+            return FileResponse(index_html)
+
     return app
+
+
+def _find_static_dir() -> Path | None:
+    from pathlib import Path
+
+    candidates = [
+        Path.cwd() / "web" / "dist",
+        Path(__file__).parent.parent.parent.parent / "web" / "dist",
+    ]
+    for candidate in candidates:
+        if candidate.exists() and (candidate / "index.html").exists():
+            return candidate
+    return None
 
 
 def run_server(output_dir: Path, host: str = "0.0.0.0", port: int = 8000) -> None:
     import uvicorn
 
-    app = create_app(output_dir)
+    static_dir = _find_static_dir()
+    app = create_app(output_dir, static_dir=static_dir)
+
     print(f"Starting fuzzer monitor server at http://{host}:{port}")
     print(f"Watching: {output_dir}/runs.ndjson")
+    if static_dir:
+        print(f"Serving frontend from: {static_dir}")
+    else:
+        print("Frontend not found. Run 'cd web && pnpm build' to enable.")
     uvicorn.run(app, host=host, port=port)
 
 
@@ -217,10 +249,15 @@ def start_server_background(output_dir: Path, host: str = "0.0.0.0", port: int =
 
     import uvicorn
 
-    app = create_app(output_dir)
+    static_dir = _find_static_dir()
+    app = create_app(output_dir, static_dir=static_dir)
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
 
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    print(f"Monitoring server started at http://{host}:{port}")
+
+    if static_dir:
+        print(f"Monitoring server started at http://{host}:{port} (frontend: {static_dir})")
+    else:
+        print(f"Monitoring server started at http://{host}:{port} (API only)")
