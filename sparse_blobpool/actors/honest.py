@@ -121,6 +121,10 @@ class Node(Actor):
     def peers(self) -> set[ActorId]:
         return self._peers
 
+    @property
+    def custody_mask(self) -> int:
+        return self._custody_mask
+
     def add_peer(self, peer_id: ActorId) -> None:
         self._peers.add(peer_id)
 

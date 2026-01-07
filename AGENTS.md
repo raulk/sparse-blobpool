@@ -11,7 +11,8 @@ This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key co
 - `sparse_blobpool/p2p/` - Topology generation
 - `sparse_blobpool/protocol/` - eth/71 messages, blobpool state
 - `sparse_blobpool/scenarios/` - Runnable simulation scenarios
-- `tests/` - 210+ tests with hypothesis property-based testing
+- `sparse_blobpool/fuzzer/` - Fuzzer autopilot for continuous randomized testing
+- `tests/` - 215+ tests with hypothesis property-based testing
 
 ## Python version
 
