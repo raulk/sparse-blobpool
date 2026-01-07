@@ -24,11 +24,11 @@ fuzz-forever: build-web
 
 # Build Docker image
 docker-build:
-    docker build -t sparse-blobpool-fuzzer .
+    sudo docker build -t sparse-blobpool-fuzzer .
 
 # Build and run containerized fuzzer with dashboard
 server: docker-build
-    docker compose up
+    sudo docker compose up
 
 # --- Development ---
 
