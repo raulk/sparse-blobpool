@@ -51,3 +51,9 @@ Thumbs.db
 .claude/cache/
 .claude/tsc-cache/
 thoughts/ledgers/
+
+# Web UI (separate deployment)
+fuzzer_ui/
+
+# Fuzzer runtime output
+fuzzer_output/
