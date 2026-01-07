@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from datetime import datetime
@@ -13,6 +14,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+# Store background task reference to prevent garbage collection
+_background_tasks: set[asyncio.Task[None]] = set()
 
 app = FastAPI(title="Fuzzer Monitor API")
 
@@ -59,10 +63,8 @@ class ConnectionManager:
 
     async def broadcast(self, message: str) -> None:
         for connection in self.active_connections:
-            try:
+            with contextlib.suppress(Exception):
                 await connection.send_text(message)
-            except:
-                pass
 
 
 manager = ConnectionManager()
@@ -79,15 +81,12 @@ async def watch_ndjson_file() -> None:
     while True:
         try:
             if runs_file.exists():
-                with open(runs_file, "r") as f:
+                with open(runs_file) as f:
                     f.seek(last_position)
                     for line in f:
                         if line.strip():
                             data = json.loads(line)
-                            await manager.broadcast(json.dumps({
-                                "type": "new_run",
-                                "data": data
-                            }))
+                            await manager.broadcast(json.dumps({"type": "new_run", "data": data}))
                     last_position = f.tell()
         except Exception as e:
             print(f"Error watching file: {e}")
@@ -97,7 +96,9 @@ async def watch_ndjson_file() -> None:
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    asyncio.create_task(watch_ndjson_file())
+    task = asyncio.create_task(watch_ndjson_file())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @app.get("/api/stats")
@@ -107,7 +108,7 @@ async def get_stats() -> DashboardStats:
     anomaly_counts: dict[str, int] = {}
 
     if runs_file.exists():
-        with open(runs_file, "r") as f:
+        with open(runs_file) as f:
             for line in f:
                 if line.strip():
                     data = json.loads(line)
@@ -135,16 +136,18 @@ async def get_stats() -> DashboardStats:
     # Get recent runs
     recent = []
     for run in runs[-20:]:
-        recent.append(RunSummary(
-            run_id=run["run_id"],
-            seed=run["seed"],
-            status=run["status"],
-            anomalies=run.get("anomalies", []),
-            wall_clock_seconds=run["wall_clock_seconds"],
-            simulated_seconds=run["simulated_seconds"],
-            timestamp=datetime.fromisoformat(run["timestamp_start"]),
-            metrics=run.get("metrics", {})
-        ))
+        recent.append(
+            RunSummary(
+                run_id=run["run_id"],
+                seed=run["seed"],
+                status=run["status"],
+                anomalies=run.get("anomalies", []),
+                wall_clock_seconds=run["wall_clock_seconds"],
+                simulated_seconds=run["simulated_seconds"],
+                timestamp=datetime.fromisoformat(run["timestamp_start"]),
+                metrics=run.get("metrics", {}),
+            )
+        )
 
     return DashboardStats(
         total_runs=total,
@@ -153,7 +156,7 @@ async def get_stats() -> DashboardStats:
         error_rate=error_count / total if total > 0 else 0,
         runs_per_minute=rpm,
         anomaly_distribution=anomaly_counts,
-        recent_runs=recent
+        recent_runs=recent,
     )
 
 
@@ -163,20 +166,22 @@ async def get_runs(limit: int = 100, offset: int = 0) -> list[RunSummary]:
     runs = []
 
     if runs_file.exists():
-        with open(runs_file, "r") as f:
+        with open(runs_file) as f:
             all_runs = [json.loads(line) for line in f if line.strip()]
 
-            for run in all_runs[offset:offset + limit]:
-                runs.append(RunSummary(
-                    run_id=run["run_id"],
-                    seed=run["seed"],
-                    status=run["status"],
-                    anomalies=run.get("anomalies", []),
-                    wall_clock_seconds=run["wall_clock_seconds"],
-                    simulated_seconds=run["simulated_seconds"],
-                    timestamp=datetime.fromisoformat(run["timestamp_start"]),
-                    metrics=run.get("metrics", {})
-                ))
+            for run in all_runs[offset : offset + limit]:
+                runs.append(
+                    RunSummary(
+                        run_id=run["run_id"],
+                        seed=run["seed"],
+                        status=run["status"],
+                        anomalies=run.get("anomalies", []),
+                        wall_clock_seconds=run["wall_clock_seconds"],
+                        simulated_seconds=run["simulated_seconds"],
+                        timestamp=datetime.fromisoformat(run["timestamp_start"]),
+                        metrics=run.get("metrics", {}),
+                    )
+                )
 
     return runs
 
@@ -185,7 +190,7 @@ async def get_runs(limit: int = 100, offset: int = 0) -> list[RunSummary]:
 async def get_run_details(run_id: str) -> dict[str, Any]:
     """Get detailed information for a specific run."""
     if runs_file.exists():
-        with open(runs_file, "r") as f:
+        with open(runs_file) as f:
             for line in f:
                 if line.strip():
                     data = json.loads(line)
@@ -223,11 +228,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 @app.get("/api/stream")
 async def stream_events() -> StreamingResponse:
     """Server-sent events endpoint as WebSocket alternative."""
+
     async def event_generator():
         last_position = 0
         while True:
             if runs_file.exists():
-                with open(runs_file, "r") as f:
+                with open(runs_file) as f:
                     f.seek(last_position)
                     for line in f:
                         if line.strip():
@@ -241,4 +247,5 @@ async def stream_events() -> StreamingResponse:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
