@@ -210,3 +210,17 @@ def run_server(output_dir: Path, host: str = "0.0.0.0", port: int = 8000) -> Non
     print(f"Starting fuzzer monitor server at http://{host}:{port}")
     print(f"Watching: {output_dir}/runs.ndjson")
     uvicorn.run(app, host=host, port=port)
+
+
+def start_server_background(output_dir: Path, host: str = "0.0.0.0", port: int = 8000) -> None:
+    import threading
+
+    import uvicorn
+
+    app = create_app(output_dir)
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+    server = uvicorn.Server(config)
+
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    print(f"Monitoring server started at http://{host}:{port}")

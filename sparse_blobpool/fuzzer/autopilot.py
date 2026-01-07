@@ -313,10 +313,29 @@ def main() -> None:
             master_seed=args.seed,
         )
 
-    if args.serve:
+    serve_only = args.serve and args.replay is None and args.max_runs is None
+
+    if serve_only:
         from sparse_blobpool.fuzzer.server import run_server
 
         run_server(args.output_dir, port=args.port)
+    elif args.serve:
+        from sparse_blobpool.fuzzer.server import start_server_background
+
+        start_server_background(args.output_dir, port=args.port)
+
+        if args.replay is not None:
+            replay_run(args.replay, fuzzer_config)
+        else:
+            run_fuzzer(fuzzer_config)
+
+        print(f"\nFuzzing complete. Server still running at http://localhost:{args.port}")
+        print("Press Ctrl+C to exit.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
     elif args.replay is not None:
         replay_run(args.replay, fuzzer_config)
     else:
