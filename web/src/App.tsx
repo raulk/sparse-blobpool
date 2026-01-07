@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import {
   Activity,
   AlertCircle,
@@ -9,7 +9,8 @@ import {
   Hash,
   FileText,
   BarChart3,
-  Terminal
+  Terminal,
+  ChevronDown
 } from 'lucide-react'
 import {
   BarChart,
@@ -67,6 +68,9 @@ function App() {
   const queryClient = useQueryClient()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [drawerTab, setDrawerTab] = useState<'params' | 'metrics' | 'logs'>('params')
+  const [loadedRuns, setLoadedRuns] = useState<RunSummary[]>([])
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ['stats'],
@@ -99,6 +103,38 @@ function App() {
 
     return () => ws.close()
   }, [queryClient])
+
+  // Combine recent runs from stats with any additionally loaded runs
+  const allRuns = useMemo(() => {
+    if (!stats) return []
+    const recentIds = new Set(stats.recent_runs.map(r => r.run_id))
+    const olderRuns = loadedRuns.filter(r => !recentIds.has(r.run_id))
+    return [...stats.recent_runs, ...olderRuns]
+  }, [stats, loadedRuns])
+
+  const loadMore = async () => {
+    if (isLoadingMore || !hasMore) return
+    setIsLoadingMore(true)
+    try {
+      const offset = allRuns.length
+      const res = await fetch(`${API_BASE}/api/runs?limit=50&offset=${offset}`)
+      const runs: RunSummary[] = await res.json()
+      if (runs.length === 0) {
+        setHasMore(false)
+      } else {
+        setLoadedRuns(prev => {
+          const existingIds = new Set(prev.map(r => r.run_id))
+          const newRuns = runs.filter(r => !existingIds.has(r.run_id))
+          return [...prev, ...newRuns]
+        })
+        if (runs.length < 50) {
+          setHasMore(false)
+        }
+      }
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
 
   if (isLoading || !stats) {
     return (
@@ -226,8 +262,10 @@ function App() {
         {/* Runs Table */}
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <div className="px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide">Recent Runs</h3>
-            <span className="text-xs text-slate-400">{stats.recent_runs.length} runs</span>
+            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide">Runs</h3>
+            <span className="text-xs text-slate-400">
+              {allRuns.length} of {stats.total_runs} runs
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -241,7 +279,7 @@ function App() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {[...stats.recent_runs].reverse().map((run) => (
+                {[...allRuns].reverse().map((run) => (
                   <tr
                     key={run.run_id}
                     className={clsx(
@@ -274,12 +312,34 @@ function App() {
                 ))}
               </tbody>
             </table>
-            {stats.recent_runs.length === 0 && (
+            {allRuns.length === 0 && (
               <div className="px-4 py-8 text-center text-sm text-slate-400">
                 No runs yet. Start the fuzzer to see results.
               </div>
             )}
           </div>
+          {/* Load more */}
+          {allRuns.length > 0 && hasMore && allRuns.length < stats.total_runs && (
+            <div className="border-t border-slate-100">
+              <button
+                onClick={loadMore}
+                disabled={isLoadingMore}
+                className="w-full py-2.5 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3" />
+                    Load more runs
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </main>
 
