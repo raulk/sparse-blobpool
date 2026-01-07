@@ -7,18 +7,24 @@ create nonce chains that fill the victim's per-sender blobpool slots.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import TYPE_CHECKING
 
-from sparse_blobpool.actors.adversaries import (
-    TargetedPoisoningAdversary,
-    TargetedPoisoningConfig,
-)
 from sparse_blobpool.config import SimulationConfig
+from sparse_blobpool.core.actor import Actor
+from sparse_blobpool.core.events import Command, EventPayload, Message
 from sparse_blobpool.core.simulator import Simulator
-from sparse_blobpool.core.types import ActorId, Address
+from sparse_blobpool.core.types import ActorId, Address, TxHash
+from sparse_blobpool.protocol.constants import ALL_ONES
+from sparse_blobpool.protocol.messages import NewPooledTransactionHashes
 
 if TYPE_CHECKING:
     pass
+
+
+@dataclass
+class InjectNext(Command):
+    """Trigger next poison tx injection in a nonce chain."""
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,109 @@ class PoisoningScenarioConfig:
     num_victims: int = 1
     victim_fraction: float | None = None
     attack_start_time: float = 0.0
+
+
+class TargetedPoisoningAdversary(Actor):
+    """Signal availability only to victim, create nonce gaps.
+
+    This adversary:
+    1. Connects k controlled nodes to a victim node
+    2. Announces transactions ONLY to the victim (not rest of network)
+    3. Creates nonce chains that fill the victim's per-sender blobpool slots
+    4. Victim cannot evict these txs because they have the lowest nonces
+
+    The attack exploits:
+    - 16 tx per sender limit in blobpool
+    - Nonce ordering requirements (can't evict low-nonce tx)
+    - Private signaling (only victim sees announcements)
+    """
+
+    def __init__(
+        self,
+        actor_id: ActorId,
+        simulator: Simulator,
+        controlled_nodes: list[ActorId],
+        victim_id: ActorId | None,
+        poisoning_config: PoisoningScenarioConfig,
+    ) -> None:
+        super().__init__(actor_id, simulator)
+        self._controlled_nodes = controlled_nodes
+        self._victim_id = victim_id
+        self._poisoning_config = poisoning_config
+        self._current_nonce = 0
+        self._sender = Address(f"0xattacker_{actor_id}")
+        self._attack_started = False
+        self._attack_stopped = False
+
+    @property
+    def victim_id(self) -> ActorId | None:
+        return self._victim_id
+
+    @property
+    def controlled_nodes(self) -> list[ActorId]:
+        return self._controlled_nodes
+
+    def on_event(self, payload: EventPayload) -> None:
+        match payload:
+            case Message() as msg:
+                self._on_message(msg)
+            case Command() as cmd:
+                self._on_command(cmd)
+
+    def _on_message(self, msg: Message) -> None:
+        pass
+
+    def _on_command(self, cmd: Command) -> None:
+        match cmd:
+            case InjectNext():
+                self._inject_next_tx()
+
+    def execute(self) -> None:
+        if self._victim_id is None:
+            return  # No victim configured
+
+        self._attack_started = True
+        self._inject_next_tx()
+
+    def _inject_next_tx(self) -> None:
+        if self._attack_stopped:
+            return
+        if self._current_nonce >= self._poisoning_config.nonce_chain_length:
+            return  # Chain complete
+
+        tx_hash = self._create_poison_tx()
+
+        announcement = NewPooledTransactionHashes(
+            sender=self.id,
+            types=bytes([3]),  # Blob tx type
+            sizes=[131072],
+            hashes=[tx_hash],
+            cell_mask=ALL_ONES,  # Claim to be provider
+        )
+
+        if self._victim_id is not None:
+            self.send(announcement, to=self._victim_id)
+
+        self._current_nonce += 1
+
+        if self._current_nonce < self._poisoning_config.nonce_chain_length:
+            self.schedule_command(
+                self._poisoning_config.injection_interval,
+                InjectNext(),
+            )
+
+    def _create_poison_tx(self) -> TxHash:
+        data = f"poison:{self.id}:{self._sender}:{self._current_nonce}".encode()
+        return TxHash(sha256(data).hexdigest())
+
+    def get_attack_progress(self) -> dict[str, int | float]:
+        return {
+            "nonces_injected": self._current_nonce,
+            "target_nonces": self._poisoning_config.nonce_chain_length,
+            "attacker_nodes": len(
+                self._controlled_nodes[: self._poisoning_config.num_attacker_connections]
+            ),
+        }
 
 
 def run_poisoning_scenario(
@@ -79,14 +188,8 @@ def run_poisoning_scenario(
             actor_id=adversary_id,
             simulator=sim,
             controlled_nodes=controlled_nodes,
-            attack_config=TargetedPoisoningConfig(
-                start_time=attack_config.attack_start_time,
-                victim_id=victim_id,
-                num_attacker_connections=attack_config.num_attacker_connections,
-                nonce_chain_length=attack_config.nonce_chain_length,
-                injection_interval=attack_config.injection_interval,
-                sender_address=Address(f"0xattacker_{i}"),
-            ),
+            victim_id=victim_id,
+            poisoning_config=attack_config,
         )
         sim.register_actor(adversary)
         adversaries.append(adversary)

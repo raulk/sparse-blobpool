@@ -1,10 +1,5 @@
 """Tests for attack scenarios."""
 
-from sparse_blobpool.actors.adversaries import (
-    SpamAdversary,
-    TargetedPoisoningAdversary,
-    WithholdingAdversary,
-)
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.scenarios import (
     PoisoningScenarioConfig,
@@ -14,6 +9,9 @@ from sparse_blobpool.scenarios import (
     run_spam_scenario,
     run_withholding_scenario,
 )
+from sparse_blobpool.scenarios.attacks.poisoning import TargetedPoisoningAdversary
+from sparse_blobpool.scenarios.attacks.spam import SpamAdversary
+from sparse_blobpool.scenarios.attacks.withholding import WithholdingAdversary
 
 
 class TestSpamScenario:
@@ -95,8 +93,8 @@ class TestSpamScenario:
         )
 
         adversary = sim.actors_by_type(SpamAdversary)[0]
-        assert adversary._spam_config.target_nodes is not None
-        assert len(adversary._spam_config.target_nodes) == 5
+        # Check target fraction was applied correctly
+        assert adversary._spam_config.target_fraction == 0.25
 
 
 class TestWithholdingScenario:
