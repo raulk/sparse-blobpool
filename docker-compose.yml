@@ -1,0 +1,10 @@
+services:
+  fuzzer:
+    build: .
+    image: sparse-blobpool-fuzzer
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./fuzzer_output:/app/fuzzer_output
+    command: uv run fuzz --serve
+    restart: unless-stopped
