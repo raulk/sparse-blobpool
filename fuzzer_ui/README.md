@@ -60,26 +60,43 @@ A minimalistic web UI for monitoring the sparse blobpool fuzzer in real-time.
    - Parameter ranges
    - Thresholds
 
-## Quick Start
+## Running
+
+### Docker (Recommended)
 
 ```bash
-# Backend
-cd fuzzer_ui/backend
-uv add fastapi uvicorn websockets watchfiles aiosqlite
-uv run uvicorn main:app --reload --port 8000
-
-# Frontend
-cd fuzzer_ui/frontend
-npm create vite@latest . -- --template react-ts
-npm install
-npm install @tanstack/react-query recharts tailwindcss lucide-react
-npm run dev
-```
-
-## Deployment
-
-```bash
+cd fuzzer_ui
 docker compose up -d
 ```
 
 Access at http://localhost:3000
+
+### Development Mode
+
+Run backend and frontend in separate terminals:
+
+```bash
+# Terminal 1: Backend (from project root)
+cd fuzzer_ui/backend
+uv sync
+uv run uvicorn main:app --reload --port 8000
+
+# Terminal 2: Frontend (from project root)
+cd fuzzer_ui/frontend
+npm install
+npm run dev
+```
+
+- Backend: http://localhost:8000
+- Frontend: http://localhost:5173
+
+### With Fuzzer
+
+Run the fuzzer in a separate terminal to generate data:
+
+```bash
+# From project root
+uv run fuzz --max-runs 100
+```
+
+The UI will automatically pick up new runs via WebSocket.

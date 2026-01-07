@@ -52,8 +52,10 @@ Thumbs.db
 .claude/tsc-cache/
 thoughts/ledgers/
 
-# Web UI (separate deployment)
-fuzzer_ui/
+# Web UI runtime artifacts
+fuzzer_ui/backend/.venv/
+fuzzer_ui/frontend/node_modules/
+fuzzer_ui/frontend/dist/
 
 # Fuzzer runtime output
 fuzzer_output/
