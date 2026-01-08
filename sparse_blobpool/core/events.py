@@ -46,3 +46,4 @@ class Event:
     target_id: ActorId = field(compare=False)
     payload: EventPayload = field(compare=False)
     priority: int = 0
+    sequence: int = 0

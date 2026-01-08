@@ -36,6 +36,7 @@ class Simulator:
         self._actors: dict[ActorId, Actor] = {}
         self._rng = Random(seed)
         self._events_processed: int = 0
+        self._next_event_sequence: int = 0
 
         self._network: Network | None = None
         self._block_producer: BlockProducer | None = None
@@ -104,6 +105,8 @@ class Simulator:
             raise ValueError(
                 f"Cannot schedule event in the past: {event.timestamp} < {self._current_time}"
             )
+        event.sequence = self._next_event_sequence
+        self._next_event_sequence += 1
         heapq.heappush(self._event_queue, event)
 
     def deliver_command(self, command: Command, target_id: ActorId) -> None:
