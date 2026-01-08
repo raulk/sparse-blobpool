@@ -82,6 +82,15 @@ def detect_anomalies(
             )
         )
 
+    if metrics.da_checks_passed_rate < thresholds.min_da_checks_passed_rate:
+        anomalies.append(
+            (
+                "low_da_checks",
+                f"da_checks_passed_rate={metrics.da_checks_passed_rate:.3f} "
+                f"< {thresholds.min_da_checks_passed_rate}",
+            )
+        )
+
     return anomalies
 
 

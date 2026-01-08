@@ -36,7 +36,8 @@ def _make_good_results() -> SimulationResults:
         false_availability_rate=0.01,
         provider_coverage=0.15,
         expected_provider_coverage=0.15,
-        local_availability_met=0.95,
+        local_availability_met=0.99,
+        da_checks_passed_rate=1.0,
     )
 
 
@@ -61,7 +62,8 @@ def test_detect_anomalies_p99_propagation_time() -> None:
         false_availability_rate=0.01,
         provider_coverage=0.15,
         expected_provider_coverage=0.15,
-        local_availability_met=0.95,
+        local_availability_met=0.99,
+        da_checks_passed_rate=1.0,
     )
     anomalies = detect_anomalies(bad, thresholds)
     assert len(anomalies) == 1
@@ -84,7 +86,8 @@ def test_detect_anomalies_reconstruction_success_rate() -> None:
         false_availability_rate=0.01,
         provider_coverage=0.15,
         expected_provider_coverage=0.15,
-        local_availability_met=0.95,
+        local_availability_met=0.99,
+        da_checks_passed_rate=1.0,
     )
     anomalies = detect_anomalies(bad, thresholds)
     assert len(anomalies) == 1
@@ -107,7 +110,8 @@ def test_detect_anomalies_false_availability_rate() -> None:
         false_availability_rate=0.1,
         provider_coverage=0.15,
         expected_provider_coverage=0.15,
-        local_availability_met=0.95,
+        local_availability_met=0.99,
+        da_checks_passed_rate=1.0,
     )
     anomalies = detect_anomalies(bad, thresholds)
     assert len(anomalies) == 1
@@ -130,7 +134,8 @@ def test_detect_anomalies_provider_coverage() -> None:
         false_availability_rate=0.01,
         provider_coverage=0.02,
         expected_provider_coverage=0.15,  # 0.02 < 0.15 * 0.5 = 0.075
-        local_availability_met=0.95,
+        local_availability_met=0.99,
+        da_checks_passed_rate=1.0,
     )
     anomalies = detect_anomalies(bad, thresholds)
     assert len(anomalies) == 1
@@ -154,6 +159,7 @@ def test_detect_anomalies_local_availability_met() -> None:
         provider_coverage=0.15,
         expected_provider_coverage=0.15,
         local_availability_met=0.5,
+        da_checks_passed_rate=1.0,
     )
     anomalies = detect_anomalies(bad, thresholds)
     assert len(anomalies) == 1
@@ -177,6 +183,7 @@ def test_detect_anomalies_all_violations() -> None:
         provider_coverage=0.02,
         expected_provider_coverage=0.15,
         local_availability_met=0.5,
+        da_checks_passed_rate=1.0,
     )
     anomalies = detect_anomalies(bad, thresholds)
     assert len(anomalies) == 5

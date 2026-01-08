@@ -605,6 +605,10 @@ class Node(Actor):
             self._pending_txs.pop(cmd.tx_hash, None)
 
     def _handle_block_announcement(self, msg: BlockBroadcast) -> None:
+        # Perform DA check: do we have the required data for all txs in this block?
+        da_passed = self._check_block_da(msg.block.blob_tx_hashes)
+        self._metrics.record_da_check(da_passed)
+
         for tx_hash in msg.block.blob_tx_hashes:
             # Remove from pending if still there
             self._pending_txs.pop(tx_hash, None)
@@ -615,6 +619,25 @@ class Node(Actor):
                 self._metrics.record_inclusion(tx_hash, msg.block.slot)
 
                 self._schedule_tx_cleanup(tx_hash)
+
+    def _check_block_da(self, tx_hashes: list[TxHash]) -> bool:
+        """Check if DA requirements are met for all transactions in a block.
+
+        For providers: must hold full blob (all cells)
+        For samplers: must hold all custody columns
+        """
+        for tx_hash in tx_hashes:
+            entry = self._pool.get(tx_hash)
+            if entry is None:
+                return False
+
+            if entry.has_full_availability:
+                continue
+
+            if (entry.cell_mask & self._custody_mask) != self._custody_mask:
+                return False
+
+        return True
 
     def _schedule_tx_cleanup(self, tx_hash: TxHash) -> None:
         # Delay cleanup slightly to allow block propagation

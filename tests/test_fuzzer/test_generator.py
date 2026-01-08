@@ -58,27 +58,6 @@ def test_validate_config_invalid_mesh_degree() -> None:
     assert any("mesh_degree" in e for e in errors)
 
 
-def test_validate_config_invalid_custody_columns() -> None:
-    config = SimulationConfig(custody_columns=200)
-    is_valid, errors = validate_config(config)
-    assert not is_valid
-    assert any("custody_columns" in e for e in errors)
-
-
-def test_validate_config_invalid_max_columns_per_request() -> None:
-    config = SimulationConfig(max_columns_per_request=20, custody_columns=8)
-    is_valid, errors = validate_config(config)
-    assert not is_valid
-    assert any("max_columns_per_request" in e for e in errors)
-
-
-def test_validate_config_invalid_timeout() -> None:
-    config = SimulationConfig(request_timeout=1.0, provider_observation_timeout=2.0)
-    is_valid, errors = validate_config(config)
-    assert not is_valid
-    assert any("request_timeout" in e for e in errors)
-
-
 def test_config_to_dict_is_json_serializable() -> None:
     config = SimulationConfig(node_count=100, mesh_degree=50)
     d = config_to_dict(config)

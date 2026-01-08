@@ -15,7 +15,7 @@ from sparse_blobpool.fuzzer.executor import (
 )
 from sparse_blobpool.fuzzer.generator import (
     config_to_dict,
-    generate_num_transactions,
+    generate_mempool_saturation_target,
     generate_run_id,
     generate_simulation_config,
     validate_config,
@@ -81,14 +81,20 @@ def run_fuzzer(config: FuzzerConfig) -> None:
         run_rng = Random(run_seed)
 
         run_id = generate_run_id(run_rng)
-        num_transactions = generate_num_transactions(
-            run_rng, config.parameter_ranges.num_transactions
+        saturation_target = generate_mempool_saturation_target(
+            run_rng, config.parameter_ranges.mempool_saturation_target
         )
 
         sim_config = generate_simulation_config(
             run_rng,
             config.parameter_ranges,
             config.simulation_duration,
+        )
+
+        # Calculate num_transactions from saturation target
+        num_slots = int(config.simulation_duration / sim_config.slot_duration)
+        num_transactions = max(
+            1, int(saturation_target * sim_config.max_blobs_per_block * num_slots)
         )
 
         is_valid, _validation_errors = validate_config(sim_config)
@@ -147,13 +153,19 @@ def replay_run(seed: int, config: FuzzerConfig) -> None:
     run_rng = Random(seed)
 
     run_id = generate_run_id(run_rng)
-    num_transactions = generate_num_transactions(run_rng, config.parameter_ranges.num_transactions)
+    saturation_target = generate_mempool_saturation_target(
+        run_rng, config.parameter_ranges.mempool_saturation_target
+    )
 
     sim_config = generate_simulation_config(
         run_rng,
         config.parameter_ranges,
         config.simulation_duration,
     )
+
+    # Calculate num_transactions from saturation target
+    num_slots = int(config.simulation_duration / sim_config.slot_duration)
+    num_transactions = max(1, int(saturation_target * sim_config.max_blobs_per_block * num_slots))
 
     is_valid, _validation_errors = validate_config(sim_config)
     if not is_valid:

@@ -576,8 +576,8 @@ function ConfigDisplay({ config }: { config?: Record<string, unknown> }) {
     )
   }
 
-  const networkParams = ['node_count', 'mesh_degree', 'interconnection_policy', 'default_bandwidth']
-  const protocolParams = ['custody_columns', 'extra_random_columns', 'max_columns_per_request', 'min_providers_before_sample', 'provider_probability']
+  const networkParams = ['node_count', 'mesh_degree', 'interconnection_policy']
+  const protocolParams = ['extra_random_columns', 'max_columns_per_request', 'min_providers_before_sample', 'provider_probability']
   const timingParams = ['slot_duration', 'duration', 'provider_observation_timeout', 'request_timeout', 'tx_expiration']
   const blobpoolParams = ['blobpool_max_bytes', 'max_txs_per_sender', 'max_blobs_per_block', 'inclusion_policy']
   const otherParams = ['scenario', 'seed']
@@ -633,6 +633,58 @@ function ConfigDisplay({ config }: { config?: Record<string, unknown> }) {
       <ParamGroup title="Blobpool" params={getParamsFromConfig(blobpoolParams)} />
       <ParamGroup title="Other" params={getParamsFromConfig(otherParams)} />
     </div>
+  )
+}
+
+function ColumnCoverageChart({ coverage }: { coverage: number[] }) {
+  const data = coverage.map((count, idx) => ({ column: idx, nodes: count }))
+  const avgCoverage = coverage.reduce((a, b) => a + b, 0) / coverage.length
+  const minCoverage = Math.min(...coverage)
+  const maxCoverage = Math.max(...coverage)
+
+  return (
+    <Section title="Column coverage">
+      <div className="space-y-2">
+        <div className="flex justify-between text-xs text-slate-400">
+          <span>Nodes custodying each column (0-127)</span>
+          <span>
+            min: <span className="text-slate-300 font-mono">{minCoverage.toLocaleString()}</span>
+            {' · '}avg: <span className="text-slate-300 font-mono">{avgCoverage.toFixed(0)}</span>
+            {' · '}max: <span className="text-slate-300 font-mono">{maxCoverage.toLocaleString()}</span>
+          </span>
+        </div>
+        <div className="h-32 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+              <XAxis
+                dataKey="column"
+                tick={{ fontSize: 9, fill: '#64748b' }}
+                tickLine={{ stroke: '#334155' }}
+                axisLine={{ stroke: '#334155' }}
+                interval={15}
+              />
+              <YAxis
+                tick={{ fontSize: 9, fill: '#64748b' }}
+                tickLine={{ stroke: '#334155' }}
+                axisLine={{ stroke: '#334155' }}
+                width={40}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  fontSize: '12px'
+                }}
+                labelFormatter={(label) => `Column ${label}`}
+                formatter={(value: number) => [`${value.toLocaleString()} nodes`, 'Coverage']}
+              />
+              <Bar dataKey="nodes" fill="#3b82f6" radius={[1, 1, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </Section>
   )
 }
 
@@ -702,6 +754,8 @@ function MetricsDisplay({ metrics }: { metrics?: Record<string, unknown> }) {
     )
   }
 
+  const columnCoverage = metrics.column_coverage as number[] | undefined
+
   return (
     <div className="space-y-4">
       <MetricGroup title="Bandwidth" items={getMetricsFromData(bandwidthMetrics)} />
@@ -709,6 +763,9 @@ function MetricsDisplay({ metrics }: { metrics?: Record<string, unknown> }) {
       <MetricGroup title="Provider coverage" items={getMetricsFromData(providerMetrics)} />
       <MetricGroup title="Availability" items={getMetricsFromData(availabilityMetrics)} />
       <MetricGroup title="Attack resilience" items={getMetricsFromData(attackMetrics)} />
+      {columnCoverage && columnCoverage.length > 0 && (
+        <ColumnCoverageChart coverage={columnCoverage} />
+      )}
     </div>
   )
 }
