@@ -181,6 +181,7 @@ class Node(Actor):
             self._metrics.record_tx_seen(self._id, cmd.tx_hash, Role.PROVIDER, cmd.cell_mask)
 
             self._announce_tx(entry)
+            self._schedule_tx_expiration(entry.tx_hash)
         except (RBFRejected, SenderLimitExceeded, PoolFull):
             pass  # Transaction rejected
 
@@ -304,11 +305,8 @@ class Node(Actor):
         pending.state = TxState.FETCHING_TX
 
         # Pick a provider peer to request from
-        if pending.provider_peers:
-            target = next(iter(pending.provider_peers))
-        elif pending.sampler_peers:
-            target = next(iter(pending.sampler_peers))
-        else:
+        target = self._pick_peer(pending.provider_peers) or self._pick_peer(pending.sampler_peers)
+        if target is None:
             return  # No peers to request from
 
         request_id = self._allocate_request_id()
@@ -523,11 +521,12 @@ class Node(Actor):
 
             # Announce to peers
             self._announce_tx(entry)
+            self._schedule_tx_expiration(entry.tx_hash)
         except (RBFRejected, SenderLimitExceeded, PoolFull):
             pass  # Transaction rejected
 
     def _announce_tx(self, entry: BlobTxEntry) -> None:
-        for peer in self._peers:
+        for peer in sorted(self._peers):
             if peer in entry.announced_to:
                 continue
 
@@ -560,6 +559,15 @@ class Node(Actor):
             ProviderObservationTimeout(tx_hash=tx_hash),
         )
 
+    def _schedule_tx_expiration(self, tx_hash: TxHash) -> None:
+        self.schedule_command(self._config.tx_expiration, TxCleanup(tx_hash=tx_hash))
+
+    @staticmethod
+    def _pick_peer(peers: set[ActorId]) -> ActorId | None:
+        if not peers:
+            return None
+        return min(peers)
+
     def _handle_request_timeout(self, cmd: RequestTimeout) -> None:
         request = self._pending_requests.pop(cmd.request_id, None)
         if request is None:
@@ -574,8 +582,8 @@ class Node(Actor):
             # Find another peer to try
             tried_peer = request.target_peer
             other_peers = (pending.provider_peers | pending.sampler_peers) - {tried_peer}
-            if other_peers:
-                new_peer = next(iter(other_peers))
+            new_peer = self._pick_peer(other_peers)
+            if new_peer is not None:
                 new_request_id = self._allocate_request_id()
                 self._send_get_transactions(request.tx_hash, new_peer, new_request_id)
             else:
@@ -596,8 +604,9 @@ class Node(Actor):
         # Proceed with whatever peers we have
         if pending.provider_peers or pending.sampler_peers:
             if pending.role == Role.PROVIDER:
-                target = next(iter(pending.provider_peers or pending.sampler_peers))
-                self._start_provider_fetch(cmd.tx_hash, target)
+                target = self._pick_peer(pending.provider_peers or pending.sampler_peers)
+                if target is not None:
+                    self._start_provider_fetch(cmd.tx_hash, target)
             else:
                 self._start_sampler_fetch(cmd.tx_hash)
         else:
@@ -661,7 +670,7 @@ class Node(Actor):
 
         announcement = BlockBroadcast(sender=self._id, block=block)
 
-        for peer in self._peers:
+        for peer in sorted(self._peers):
             self.send(announcement, peer)
 
         self._handle_block_announcement(announcement)
