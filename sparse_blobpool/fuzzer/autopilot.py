@@ -93,7 +93,9 @@ def run_fuzzer(config: FuzzerConfig) -> None:
 
         # Calculate num_transactions from saturation target
         num_slots = int(config.simulation_duration / sim_config.slot_duration)
-        num_transactions = max(1, int(saturation_target * sim_config.max_blobs_per_block * num_slots))
+        num_transactions = max(
+            1, int(saturation_target * sim_config.max_blobs_per_block * num_slots)
+        )
 
         is_valid, _validation_errors = validate_config(sim_config)
         if not is_valid:
