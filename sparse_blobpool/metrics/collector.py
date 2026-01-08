@@ -65,6 +65,9 @@ class MetricsCollector:
     # Custody mask tracking (for local availability calculation)
     node_custody_masks: dict[ActorId, int] = field(default_factory=dict)
 
+    # Column coverage: how many nodes custody each column (128 columns)
+    column_coverage: list[int] = field(default_factory=lambda: [0] * 128)
+
     # Timeseries
     bandwidth_timeseries: list[BandwidthSnapshot] = field(default_factory=list)
     propagation_timeseries: list[PropagationSnapshot] = field(default_factory=list)
@@ -78,6 +81,10 @@ class MetricsCollector:
     poisoned_txs: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
     withholding_detected: int = 0
 
+    # DA check tracking (per block per node)
+    da_checks_passed: int = 0
+    da_checks_total: int = 0
+
     # Internal state
     _last_snapshot_time: float = 0.0
     _total_bytes: int = 0
@@ -88,6 +95,11 @@ class MetricsCollector:
         self.node_countries[node_id] = country
         self.node_custody_masks[node_id] = custody_mask
         self.node_count += 1
+
+        # Track column coverage
+        for col_idx in range(128):
+            if custody_mask & (1 << col_idx):
+                self.column_coverage[col_idx] += 1
 
     def record_bandwidth(
         self,
@@ -154,6 +166,11 @@ class MetricsCollector:
 
     def record_withholding_detected(self) -> None:
         self.withholding_detected += 1
+
+    def record_da_check(self, passed: bool) -> None:
+        self.da_checks_total += 1
+        if passed:
+            self.da_checks_passed += 1
 
     def snapshot(self) -> None:
         """Called periodically to build bandwidth/propagation timeseries."""
@@ -269,6 +286,10 @@ class MetricsCollector:
             local_availability_count / total_node_tx_pairs if total_node_tx_pairs > 0 else 0.0
         )
 
+        da_checks_passed_rate = (
+            self.da_checks_passed / self.da_checks_total if self.da_checks_total > 0 else 1.0
+        )
+
         return SimulationResults(
             # Bandwidth
             total_bandwidth_bytes=self._total_bytes,
@@ -292,6 +313,7 @@ class MetricsCollector:
             provider_coverage=provider_coverage,
             expected_provider_coverage=self.expected_provider_probability,
             local_availability_met=local_availability_met,
+            da_checks_passed_rate=da_checks_passed_rate,
             # Attack outcomes
             spam_amplification_factor=(
                 self.spam_accepted / (self.spam_accepted + self.spam_rejected)
@@ -305,4 +327,5 @@ class MetricsCollector:
             propagation_timeseries=self.propagation_timeseries,
             bytes_sent_per_node=dict(self.bytes_sent),
             bytes_received_per_node=dict(self.bytes_received),
+            column_coverage=self.column_coverage,
         )

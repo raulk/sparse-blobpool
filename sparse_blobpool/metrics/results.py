@@ -51,6 +51,9 @@ class SimulationResults:
     expected_provider_coverage: float  # Expected provider probability from config
     local_availability_met: float  # Fraction of nodes meeting local availability
 
+    # DA check metrics (per block)
+    da_checks_passed_rate: float  # Fraction of nodes passing DA checks across all blocks
+
     # Attack outcomes (populated when adversaries present)
     spam_amplification_factor: float = 0.0
     victim_blobpool_pollution: float = 0.0
@@ -63,6 +66,9 @@ class SimulationResults:
     # Per-node bandwidth breakdown
     bytes_sent_per_node: dict[ActorId, int] = field(default_factory=dict)
     bytes_received_per_node: dict[ActorId, int] = field(default_factory=dict)
+
+    # Column coverage: number of nodes custodying each column (128 values)
+    column_coverage: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -78,7 +84,9 @@ class SimulationResults:
             "provider_coverage": self.provider_coverage,
             "expected_provider_coverage": self.expected_provider_coverage,
             "local_availability_met": self.local_availability_met,
+            "da_checks_passed_rate": self.da_checks_passed_rate,
             "spam_amplification_factor": self.spam_amplification_factor,
             "victim_blobpool_pollution": self.victim_blobpool_pollution,
             "withholding_detection_rate": self.withholding_detection_rate,
+            "column_coverage": self.column_coverage,
         }

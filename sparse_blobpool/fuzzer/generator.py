@@ -36,11 +36,17 @@ def generate_num_transactions(rng: Random, range_: IntRange) -> int:
     return rng.randint(range_[0], range_[1])
 
 
+def generate_mempool_saturation_target(rng: Random, range_: tuple[float, float]) -> float:
+    return rng.uniform(range_[0], range_[1])
+
+
 def generate_simulation_config(
     rng: Random,
     ranges: ParameterRanges,
     duration: float,
 ) -> SimulationConfig:
+    # Note: custody_columns is per-node-type now, use default from SimulationConfig
+    # The node_types in ranges define custody ranges per type
     return SimulationConfig(
         node_count=rng.randint(*ranges.node_count),
         mesh_degree=rng.randint(*ranges.mesh_degree),
@@ -49,13 +55,11 @@ def generate_simulation_config(
         min_providers_before_sample=rng.randint(*ranges.min_providers_before_sample),
         extra_random_columns=rng.randint(*ranges.extra_random_columns),
         max_columns_per_request=rng.randint(*ranges.max_columns_per_request),
-        custody_columns=rng.randint(*ranges.custody_columns),
         provider_observation_timeout=rng.uniform(*ranges.provider_observation_timeout),
         request_timeout=rng.uniform(*ranges.request_timeout),
         tx_expiration=rng.uniform(*ranges.tx_expiration),
         blobpool_max_bytes=rng.randint(*ranges.blobpool_max_bytes),
         max_txs_per_sender=rng.randint(*ranges.max_txs_per_sender),
-        default_bandwidth=rng.uniform(*ranges.default_bandwidth),
         duration=duration,
         seed=rng.randint(0, 2**31 - 1),
     )
@@ -67,21 +71,6 @@ def validate_config(config: SimulationConfig) -> tuple[bool, list[str]]:
     if config.mesh_degree > config.node_count - 1:
         errors.append(
             f"mesh_degree ({config.mesh_degree}) > node_count - 1 ({config.node_count - 1})"
-        )
-
-    if config.custody_columns > 128:
-        errors.append(f"custody_columns ({config.custody_columns}) > 128")
-
-    if config.max_columns_per_request > config.custody_columns:
-        errors.append(
-            f"max_columns_per_request ({config.max_columns_per_request}) > "
-            f"custody_columns ({config.custody_columns})"
-        )
-
-    if config.request_timeout <= config.provider_observation_timeout:
-        errors.append(
-            f"request_timeout ({config.request_timeout}) <= "
-            f"provider_observation_timeout ({config.provider_observation_timeout})"
         )
 
     return (len(errors) == 0, errors)
@@ -108,5 +97,4 @@ def config_to_dict(config: SimulationConfig) -> dict[str, object]:
         "inclusion_policy": config.inclusion_policy.name,
         "seed": config.seed,
         "duration": config.duration,
-        "default_bandwidth": config.default_bandwidth,
     }
