@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class CoDelState:
-    """Per-link CoDel queue state for congestion modeling.
+    """Per-node CoDel queue state for congestion modeling.
 
     This is a delay-only CoDel variant optimized for discrete event simulation.
     Unlike RFC 8289 CoDel which drops packets, this implementation adds latency
@@ -30,19 +30,18 @@ class CoDelState:
        simulation with retransmission logic.
 
     2. **Virtual queue avoids packet buffering**: Rather than maintaining actual
-       packet queues, we track a virtual byte counter that drains at the link's
-       drain rate. This is sufficient because the simulator schedules discrete
-       events—we only need to compute the delay at send time, not manage a
-       real queue.
+       packet queues, we track a virtual byte counter that drains at the
+       configured rate. This is sufficient because the simulator schedules
+       discrete events, we only need to compute the delay at send time, not
+       manage a real queue.
 
-    3. **Per-link state models point-to-point congestion**: Each (sender, receiver)
-       pair maintains independent state. This captures link-level congestion
-       without the complexity of fair queuing across flows, which isn't needed
-       when simulating a small number of peers with distinct message patterns.
+    3. **Per-node state models shared bottlenecks**: Each node maintains
+       independent ingress and egress state. This captures contention at
+       a node's uplink/downlink rather than over-segmenting into per-peer queues.
 
     4. **Sqrt backoff preserves CoDel's key insight**: Under sustained congestion,
        delay increases with sqrt(drop_count), preventing both queue explosion
-       and oscillation—the core benefit of CoDel's control law.
+       and oscillation, the core benefit of CoDel's control law.
     """
 
     queue_bytes: float = 0.0
@@ -90,8 +89,9 @@ class Network:
         self._actor_countries: dict[ActorId, Country] = {}
         self._actor_bandwidth: dict[ActorId, float] = {}
 
-        # Per-link CoDel state
-        self._codel_state: dict[tuple[ActorId, ActorId], CoDelState] = {}
+        # Per-node CoDel state
+        self._codel_state_egress: dict[ActorId, CoDelState] = {}
+        self._codel_state_ingress: dict[ActorId, CoDelState] = {}
 
         # Statistics
         self._messages_delivered: int = 0
@@ -158,11 +158,15 @@ class Network:
 
         return max(0, base + jitter + transmission + codel)
 
-    def _get_codel_state(self, from_: ActorId, to: ActorId) -> CoDelState:
-        link = (from_, to)
-        if link not in self._codel_state:
-            self._codel_state[link] = CoDelState()
-        return self._codel_state[link]
+    def _get_codel_state_egress(self, actor_id: ActorId) -> CoDelState:
+        if actor_id not in self._codel_state_egress:
+            self._codel_state_egress[actor_id] = CoDelState()
+        return self._codel_state_egress[actor_id]
+
+    def _get_codel_state_ingress(self, actor_id: ActorId) -> CoDelState:
+        if actor_id not in self._codel_state_ingress:
+            self._codel_state_ingress[actor_id] = CoDelState()
+        return self._codel_state_ingress[actor_id]
 
     def _codel_delay(self, from_: ActorId, to: ActorId, size_bytes: int) -> float:
         """Compute additional delay from virtual queue congestion.
@@ -174,9 +178,17 @@ class Network:
         4. If sojourn > target for sustained period, increment drop_count
         5. Return sojourn scaled by sqrt(drop_count) to model CoDel backoff
         """
+        egress_state = self._get_codel_state_egress(from_)
+        ingress_state = self._get_codel_state_ingress(to)
+
+        egress_delay = self._codel_delay_for_state(egress_state, size_bytes)
+        ingress_delay = self._codel_delay_for_state(ingress_state, size_bytes)
+
+        return egress_delay + ingress_delay
+
+    def _codel_delay_for_state(self, state: CoDelState, size_bytes: int) -> float:
         current_time = self._simulator.current_time
         config = self._codel_config
-        state = self._get_codel_state(from_, to)
 
         # Drain queue based on elapsed time since last update
         if state.queue_bytes > 0 and state.queue_start_time >= 0:
