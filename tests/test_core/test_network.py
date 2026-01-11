@@ -300,23 +300,23 @@ class TestCoDelConfig:
 
 
 class TestCoDelBehavior:
-    def test_codel_state_created_per_link(self) -> None:
-        """CoDel state is created and tracked per link."""
+    def test_codel_state_created_per_node(self) -> None:
+        """CoDel state is created and tracked per node ingress/egress."""
         sim = Simulator()
         network = make_network(sim)
         sim._network = network
 
-        # Get state for a link - creates new state
-        state1 = network._get_codel_state(ActorId("a"), ActorId("b"))
-        assert state1.queue_bytes == 0.0
+        # Egress state per sender
+        egress_a = network._get_codel_state_egress(ActorId("a"))
+        assert egress_a.queue_bytes == 0.0
+        assert egress_a is network._get_codel_state_egress(ActorId("a"))
+        assert egress_a is not network._get_codel_state_egress(ActorId("b"))
 
-        # Same link returns same state
-        state2 = network._get_codel_state(ActorId("a"), ActorId("b"))
-        assert state1 is state2
-
-        # Different link returns different state
-        state3 = network._get_codel_state(ActorId("a"), ActorId("c"))
-        assert state1 is not state3
+        # Ingress state per receiver
+        ingress_b = network._get_codel_state_ingress(ActorId("b"))
+        assert ingress_b.queue_bytes == 0.0
+        assert ingress_b is network._get_codel_state_ingress(ActorId("b"))
+        assert ingress_b is not network._get_codel_state_ingress(ActorId("c"))
 
     def test_codel_adds_queue_delay(self) -> None:
         """CoDel adds delay when queue builds up."""
@@ -341,7 +341,7 @@ class TestCoDelBehavior:
 
         # Add bytes to queue
         network._codel_delay(ActorId("a"), ActorId("b"), 1000)
-        state = network._get_codel_state(ActorId("a"), ActorId("b"))
+        state = network._get_codel_state_egress(ActorId("a"))
         initial_bytes = state.queue_bytes
 
         # Advance time by 0.5 seconds (should drain 500 bytes)
@@ -361,7 +361,7 @@ class TestCoDelBehavior:
 
         # Try to add more than max
         network._codel_delay(ActorId("a"), ActorId("b"), 5000)
-        state = network._get_codel_state(ActorId("a"), ActorId("b"))
+        state = network._get_codel_state_egress(ActorId("a"))
 
         # Should be capped at max
         assert state.queue_bytes == 1000.0
@@ -395,5 +395,5 @@ class TestCoDelBehavior:
 
         # Delays should generally increase with congestion
         # (exact values depend on queue state)
-        state = network._get_codel_state(ActorId("a"), ActorId("b"))
+        state = network._get_codel_state_egress(ActorId("a"))
         assert state.drop_count > 0  # Should have started counting
