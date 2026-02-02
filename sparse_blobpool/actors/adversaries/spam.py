@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING
 
 from sparse_blobpool.actors.adversaries.base import Adversary, AttackConfig
 from sparse_blobpool.actors.adversaries.commands import SpamNext
+from sparse_blobpool.actors.adversaries.victim_selection import (
+    VictimSelectionConfig,
+    VictimSelectionStrategy,
+    VictimSelector,
+)
 from sparse_blobpool.core.types import TxHash
 from sparse_blobpool.protocol.constants import ALL_ONES
 from sparse_blobpool.protocol.messages import NewPooledTransactionHashes
@@ -23,7 +28,7 @@ class SpamAttackConfig(AttackConfig):
     spam_rate: float = 10.0
     valid_headers: bool = True
     provide_data: bool = False
-    target_nodes: list[ActorId] | None = None
+    victim_selection_config: VictimSelectionConfig | None = None
 
 
 class SpamAdversary(Adversary):
@@ -46,6 +51,17 @@ class SpamAdversary(Adversary):
         self._spam_config = attack_config
         self._all_nodes = all_nodes
         self._spam_counter = 0
+
+        # Initialize victim selector
+        victim_config = attack_config.victim_selection_config or VictimSelectionConfig(
+            strategy=VictimSelectionStrategy.ALL_NODES
+        )
+        self._victim_selector = VictimSelector(
+            victim_config,
+            simulator,
+            all_nodes,
+            controlled_nodes=controlled_nodes,
+        )
 
     def execute(self) -> None:
         self._attack_started = True
@@ -77,15 +93,20 @@ class SpamAdversary(Adversary):
             cell_mask=cell_mask,
         )
 
-        targets = self._select_targets()
+        # Use victim selector to determine targets
+        targets = self._victim_selector.get_victims()
         for target in targets:
             self.send(announcement, to=target)
+
+        # Record spam sent to victims in metrics
+        for victim_id in targets:
+            self.simulator.metrics.record_victim_targeted(victim_id, "spam", tx_hash)
 
     def _generate_spam_tx_hash(self) -> TxHash:
         data = f"spam:{self.id}:{self._spam_counter}".encode()
         return TxHash(sha256(data).hexdigest())
 
-    def _select_targets(self) -> list[ActorId]:
-        if self._spam_config.target_nodes:
-            return self._spam_config.target_nodes
-        return self._all_nodes
+    @property
+    def victims(self) -> list[ActorId]:
+        """Get list of victim nodes."""
+        return self._victim_selector.get_victims()

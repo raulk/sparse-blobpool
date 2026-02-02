@@ -22,17 +22,25 @@ fuzz-forever: build-web
 
 # --- Docker ---
 
-# Build Docker image
+# Build Docker images
 docker-build:
-    sudo docker build -t sparse-blobpool-fuzzer .
+    sudo docker compose build
 
 # Build and run containerized fuzzer with dashboard
 server: docker-build
-    sudo docker compose up
+    sudo docker compose up -d
+
+# Stop the server
+server-stop:
+    sudo docker compose down
+
+# View server logs
+server-logs:
+    sudo docker compose logs -f
 
 # Build and run with trace-all (saves all run traces)
 server-trace: docker-build
-    sudo docker compose run --rm -p 8000:8000 fuzzer uv run fuzz --serve --trace-all
+    sudo FUZZER_ARGS="--trace-all" docker compose up -d
 
 # --- Development ---
 
@@ -43,6 +51,12 @@ dev-web:
 # Run API server only
 dev-api:
     uv run fuzz --serve
+
+# --- Database ---
+
+# Migrate NDJSON to SQLite
+migrate-db:
+    uv run python -m sparse_blobpool.fuzzer.database --migrate
 
 # --- Testing ---
 

@@ -1,10 +1,19 @@
 services:
-  fuzzer:
+  backend:
     build: .
     image: sparse-blobpool-fuzzer
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./fuzzer_output:/app/fuzzer_output
-    command: uv run fuzz --serve
+    command: uv run fuzz --serve ${FUZZER_ARGS:-}
+    restart: unless-stopped
+
+  frontend:
+    build: ./web
+    image: sparse-blobpool-frontend
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - backend
     restart: unless-stopped
