@@ -10,7 +10,8 @@ import {
   FileText,
   BarChart3,
   Terminal,
-  ChevronDown
+  ChevronDown,
+  Target
 } from 'lucide-react'
 import {
   BarChart,
@@ -24,8 +25,19 @@ import {
   Cell
 } from 'recharts'
 import { clsx } from 'clsx'
+import { VictimVisualizer } from './VictimVisualizer'
 
 const API_BASE = ''
+
+interface AttackInfo {
+  type: string
+  attacker_count: number
+  victim_count: number
+  victim_strategy: string | null
+  victims: string[]
+  params: Record<string, unknown>
+  metadata: Record<string, unknown>
+}
 
 interface RunSummary {
   run_id: string
@@ -36,6 +48,8 @@ interface RunSummary {
   simulated_seconds: number
   timestamp: string
   metrics: Record<string, unknown>
+  attack?: AttackInfo | null
+  scenario?: string
 }
 
 interface RunDetails {
@@ -52,6 +66,9 @@ interface RunDetails {
   trace_config?: Record<string, unknown>
   trace_metrics?: Record<string, unknown>
   error?: string
+  attack?: AttackInfo | null
+  victim_metrics?: Record<string, unknown>
+  scenario?: string
 }
 
 interface DashboardStats {
@@ -67,7 +84,7 @@ interface DashboardStats {
 function App() {
   const queryClient = useQueryClient()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-  const [drawerTab, setDrawerTab] = useState<'params' | 'metrics' | 'logs'>('params')
+  const [drawerTab, setDrawerTab] = useState<'params' | 'metrics' | 'attack' | 'logs'>('params')
   const [loadedRuns, setLoadedRuns] = useState<RunSummary[]>([])
   const [hasMore, setHasMore] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
@@ -273,6 +290,7 @@ function App() {
                 <tr className="bg-slate-50 text-left text-xs text-slate-500 uppercase tracking-wide">
                   <th className="px-4 py-2 font-medium">Run ID</th>
                   <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">Attack</th>
                   <th className="px-4 py-2 font-medium">Seed</th>
                   <th className="px-4 py-2 font-medium">Duration</th>
                   <th className="px-4 py-2 font-medium">Time</th>
@@ -288,7 +306,8 @@ function App() {
                     )}
                     onClick={() => {
                       setSelectedRunId(run.run_id)
-                      setDrawerTab('params')
+                      // If run has an attack, show attack tab, otherwise params
+                      setDrawerTab(run.attack && run.attack.type !== 'none' ? 'attack' : 'params')
                     }}
                   >
                     <td className="px-4 py-2">
@@ -296,6 +315,18 @@ function App() {
                     </td>
                     <td className="px-4 py-2">
                       <StatusBadge status={run.status} />
+                    </td>
+                    <td className="px-4 py-2">
+                      {run.attack && run.attack.type !== 'none' ? (
+                        <div className="flex items-center gap-1">
+                          <Target className="w-3 h-3 text-red-500" />
+                          <span className="text-xs text-slate-600">
+                            {run.attack.victim_count} victims
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-2">
                       <span className="font-mono text-xs text-slate-500">{run.seed}</span>
@@ -380,6 +411,12 @@ function App() {
                 label="Metrics"
               />
               <TabButton
+                active={drawerTab === 'attack'}
+                onClick={() => setDrawerTab('attack')}
+                icon={<Target className="w-3.5 h-3.5" />}
+                label="Attack"
+              />
+              <TabButton
                 active={drawerTab === 'logs'}
                 onClick={() => setDrawerTab('logs')}
                 icon={<Terminal className="w-3.5 h-3.5" />}
@@ -440,6 +477,13 @@ function App() {
 
                   {drawerTab === 'metrics' && (
                     <MetricsDisplay metrics={runDetails.trace_metrics || runDetails.metrics} />
+                  )}
+
+                  {drawerTab === 'attack' && (
+                    <VictimVisualizer
+                      attack={runDetails.attack || undefined}
+                      victimMetrics={runDetails.victim_metrics as any}
+                    />
                   )}
 
                   {drawerTab === 'logs' && (

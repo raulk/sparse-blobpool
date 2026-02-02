@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from sparse_blobpool.actors.adversaries.victim_selection import (
+    VictimSelectionConfig,
+    VictimSelectionStrategy,
+    VictimSelector,
+)
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor
 from sparse_blobpool.core.events import Command, EventPayload, Message
@@ -23,7 +28,7 @@ class WithholdingScenarioConfig:
     columns_to_serve: frozenset[int] = field(default_factory=lambda: frozenset(range(64)))
     delay_other_columns: float | None = None
     num_attacker_nodes: int = 1
-    attacker_fraction: float | None = None
+    victim_selection_config: VictimSelectionConfig | None = None
     attack_start_time: float = 0.0
 
 
@@ -44,6 +49,7 @@ class WithholdingAdversary(Actor):
         simulator: Simulator,
         controlled_nodes: list[ActorId],
         withholding_config: WithholdingScenarioConfig,
+        all_nodes: list[ActorId],
     ) -> None:
         super().__init__(actor_id, simulator)
         self._controlled_nodes = controlled_nodes
@@ -51,6 +57,18 @@ class WithholdingAdversary(Actor):
         self._allowed_mask = self._compute_allowed_mask()
         self._attack_started = False
         self._attack_stopped = False
+
+        # Initialize victim selector - withholding targets specific nodes
+        victim_config = withholding_config.victim_selection_config or VictimSelectionConfig(
+            strategy=VictimSelectionStrategy.ALL_NODES  # By default withhold from everyone
+        )
+        self._victim_selector = VictimSelector(
+            victim_config,
+            simulator,
+            all_nodes,
+            controlled_nodes=controlled_nodes,
+        )
+        self._affected_victims: set[ActorId] = set()
 
     def _compute_allowed_mask(self) -> int:
         mask = 0
@@ -77,8 +95,30 @@ class WithholdingAdversary(Actor):
         self._attack_started = True
 
     def _handle_get_cells(self, req: GetCells) -> None:
+        # Check if requester is a victim we should withhold from
+        if req.sender not in self._victim_selector.get_victims():
+            # Not a victim, serve normally
+            response = Cells(
+                sender=self.id,
+                tx_hashes=req.tx_hashes,
+                cells=[[] for _ in req.tx_hashes],  # Simplified - no actual cell data
+                cell_mask=req.cell_mask,
+            )
+            self.send(response, to=req.sender)
+            return
+
+        # This is a victim - withhold data
         allowed = req.cell_mask & self._allowed_mask
         if allowed != req.cell_mask:
+            # Track that this victim was affected
+            self._affected_victims.add(req.sender)
+
+            # Record withholding in metrics
+            for tx_hash in req.tx_hashes:
+                self.simulator.metrics.record_victim_targeted(
+                    req.sender, "withholding", tx_hash
+                )
+
             if self._withholding_config.delay_other_columns is not None:
                 # Delay response for non-served columns
                 pass
@@ -106,6 +146,16 @@ class WithholdingAdversary(Actor):
     @property
     def controlled_nodes(self) -> list[ActorId]:
         return self._controlled_nodes
+
+    @property
+    def victims(self) -> list[ActorId]:
+        """Get list of victim nodes."""
+        return self._victim_selector.get_victims()
+
+    @property
+    def affected_victims(self) -> set[ActorId]:
+        """Get set of victims that were actually affected by withholding."""
+        return self._affected_victims
 
 
 def run_withholding_scenario(
@@ -149,6 +199,7 @@ def run_withholding_scenario(
         simulator=sim,
         controlled_nodes=controlled_nodes,
         withholding_config=attack_config,
+        all_nodes=all_node_ids,
     )
     sim.register_actor(adversary)
 
@@ -170,10 +221,7 @@ def _select_attacker_nodes(
     all_node_ids: list[ActorId],
 ) -> list[ActorId]:
     """Select nodes to be controlled by the adversary."""
-    if attack_config.attacker_fraction is not None:
-        num_nodes = max(1, int(len(all_node_ids) * attack_config.attacker_fraction))
-    else:
-        num_nodes = attack_config.num_attacker_nodes
+    num_nodes = attack_config.num_attacker_nodes
 
     if num_nodes >= len(all_node_ids):
         return list(all_node_ids)

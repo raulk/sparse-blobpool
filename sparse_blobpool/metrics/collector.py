@@ -81,6 +81,11 @@ class MetricsCollector:
     poisoned_txs: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
     withholding_detected: int = 0
 
+    # Victim tracking
+    victim_attacks: dict[ActorId, dict[str, list[TxHash]]] = field(
+        default_factory=lambda: defaultdict(lambda: defaultdict(list))
+    )  # victim -> attack_type -> tx_hashes
+
     # DA check tracking (per block per node)
     da_checks_passed: int = 0
     da_checks_total: int = 0
@@ -166,6 +171,18 @@ class MetricsCollector:
 
     def record_withholding_detected(self) -> None:
         self.withholding_detected += 1
+
+    def record_victim_targeted(
+        self, victim_id: ActorId, attack_type: str, tx_hash: TxHash
+    ) -> None:
+        """Record that a victim was targeted by an attack.
+
+        Args:
+            victim_id: The victim node ID
+            attack_type: Type of attack ("spam", "poisoning", "withholding")
+            tx_hash: Transaction hash used in the attack
+        """
+        self.victim_attacks[victim_id][attack_type].append(tx_hash)
 
     def record_da_check(self, passed: bool) -> None:
         self.da_checks_total += 1
@@ -290,6 +307,22 @@ class MetricsCollector:
             self.da_checks_passed / self.da_checks_total if self.da_checks_total > 0 else 1.0
         )
 
+        # Calculate victim metrics
+        total_victims = len(self.victim_attacks)
+        victim_blobpool_pollution = 0.0
+        if total_victims > 0:
+            # Calculate average pollution per victim (poisoned txs / total txs per victim)
+            pollution_rates = []
+            for victim_id in self.victim_attacks:
+                # Count poisoned txs for this victim
+                poisoned = len(self.victim_attacks[victim_id].get("poisoning", []))
+                spam = len(self.victim_attacks[victim_id].get("spam", []))
+                total_attack_txs = poisoned + spam
+                if total_attack_txs > 0:
+                    pollution_rates.append(poisoned / total_attack_txs)
+            if pollution_rates:
+                victim_blobpool_pollution = sum(pollution_rates) / len(pollution_rates)
+
         return SimulationResults(
             # Bandwidth
             total_bandwidth_bytes=self._total_bytes,
@@ -320,8 +353,10 @@ class MetricsCollector:
                 if (self.spam_accepted + self.spam_rejected) > 0
                 else 0.0
             ),
-            victim_blobpool_pollution=0.0,  # Requires adversary scenario
-            withholding_detection_rate=0.0,  # Requires adversary scenario
+            victim_blobpool_pollution=victim_blobpool_pollution,
+            withholding_detection_rate=(
+                self.withholding_detected / total_victims if total_victims > 0 else 0.0
+            ),
             # Raw data
             bandwidth_timeseries=self.bandwidth_timeseries,
             propagation_timeseries=self.propagation_timeseries,
