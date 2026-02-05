@@ -17,6 +17,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from sparse_blobpool.fuzzer.database import RunsDatabase, migrate_from_ndjson
+
 _background_tasks: set[asyncio.Task[None]] = set()
 
 
@@ -29,6 +31,8 @@ class RunSummary(BaseModel):
     simulated_seconds: float
     timestamp: datetime
     metrics: dict[str, Any]
+    attack: dict[str, Any] | None = None
+    scenario: str = "BASELINE"
 
 
 class DashboardStats(BaseModel):
@@ -62,7 +66,17 @@ class ConnectionManager:
 def create_app(output_dir: Path, static_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="Fuzzer Monitor API")
     manager = ConnectionManager()
-    runs_file = output_dir / "runs.ndjson"
+
+    # Initialize SQLite database
+    db_path = output_dir / "runs.db"
+    db = RunsDatabase(db_path)
+
+    # Legacy migration from NDJSON (one-time, for existing data)
+    ndjson_path = output_dir / "runs.ndjson"
+    if db.count_runs() == 0 and ndjson_path.exists():
+        print(f"Migrating existing runs from {ndjson_path} to SQLite...")
+        count = migrate_from_ndjson(ndjson_path, db)
+        print(f"Migrated {count} runs to SQLite database")
 
     app.add_middleware(
         CORSMiddleware,
@@ -74,27 +88,25 @@ def create_app(output_dir: Path, static_dir: Path | None = None) -> FastAPI:
 
     index_html = static_dir / "index.html" if static_dir else None
 
-    async def watch_ndjson_file() -> None:
-        last_position = 0
+    async def watch_database() -> None:
+        """Poll SQLite database for new runs and broadcast to WebSocket clients."""
+        last_id = db.get_max_id()
         while True:
             try:
-                if runs_file.exists():
-                    with open(runs_file) as f:
-                        f.seek(last_position)
-                        for line in f:
-                            if line.strip():
-                                data = json.loads(line)
-                                await manager.broadcast(
-                                    json.dumps({"type": "new_run", "data": data})
-                                )
-                        last_position = f.tell()
+                new_runs = db.get_runs_since(last_id)
+                for run in new_runs:
+                    await manager.broadcast(
+                        json.dumps({"type": "new_run", "data": run})
+                    )
+                if new_runs:
+                    last_id = db.get_max_id()
             except Exception as e:
-                print(f"Error watching file: {e}")
+                print(f"Error polling database: {e}")
             await asyncio.sleep(1)
 
     @app.on_event("startup")
     async def startup_event() -> None:
-        task = asyncio.create_task(watch_ndjson_file())
+        task = asyncio.create_task(watch_database())
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 
@@ -108,74 +120,57 @@ def create_app(output_dir: Path, static_dir: Path | None = None) -> FastAPI:
             simulated_seconds=run["simulated_seconds"],
             timestamp=datetime.fromisoformat(run["timestamp_start"]),
             metrics=run.get("metrics", {}),
+            attack=run.get("attack"),
+            scenario=run.get("scenario", "BASELINE"),
         )
-
-    def _load_all_runs() -> list[dict[str, Any]]:
-        if not runs_file.exists():
-            return []
-        with open(runs_file) as f:
-            return [json.loads(line) for line in f if line.strip()]
 
     @app.get("/api/stats")
     async def get_stats() -> DashboardStats:
-        runs = _load_all_runs()
-        anomaly_counts: dict[str, int] = {}
-
-        for run in runs:
-            for anomaly in run.get("anomalies", []):
-                marker = anomaly.split("(")[0] if "(" in anomaly else anomaly
-                anomaly_counts[marker] = anomaly_counts.get(marker, 0) + 1
-
-        total = len(runs)
-        success_count = sum(1 for r in runs if r["status"] == "success")
-        attention_count = sum(1 for r in runs if "ATTENTION" in r["status"])
-        error_count = sum(1 for r in runs if r["status"] == "error")
-
-        rpm = 0.0
-        if len(runs) >= 2:
-            first_ts = datetime.fromisoformat(runs[0]["timestamp_start"])
-            last_ts = datetime.fromisoformat(runs[-1]["timestamp_end"])
-            duration_minutes = (last_ts - first_ts).total_seconds() / 60
-            if duration_minutes > 0:
-                rpm = total / duration_minutes
-
-        recent = [_parse_run(run) for run in runs[-20:]]
+        stats = db.get_stats()
+        recent_runs = db.get_recent_runs(20)
 
         return DashboardStats(
-            total_runs=total,
-            success_rate=success_count / total if total > 0 else 0,
-            attention_rate=attention_count / total if total > 0 else 0,
-            error_rate=error_count / total if total > 0 else 0,
-            runs_per_minute=rpm,
-            anomaly_distribution=anomaly_counts,
-            recent_runs=recent,
+            total_runs=stats["total_runs"],
+            success_rate=stats["success_rate"],
+            attention_rate=stats["attention_rate"],
+            error_rate=stats["error_rate"],
+            runs_per_minute=stats["runs_per_minute"],
+            anomaly_distribution=stats["anomaly_distribution"],
+            recent_runs=[_parse_run(run) for run in recent_runs],
         )
 
     @app.get("/api/runs")
     async def get_runs(limit: int = 100, offset: int = 0) -> list[RunSummary]:
-        all_runs = _load_all_runs()
-        return [_parse_run(run) for run in all_runs[offset : offset + limit]]
+        runs = db.get_runs(limit=limit, offset=offset)
+        return [_parse_run(run) for run in runs]
 
     @app.get("/api/run/{run_id}")
     async def get_run_details(run_id: str) -> dict[str, Any]:
-        for run in _load_all_runs():
-            if run["run_id"] == run_id:
-                trace_dir = output_dir / run_id
-                if trace_dir.exists():
-                    config_file = trace_dir / "config.json"
-                    metrics_file = trace_dir / "metrics.json"
+        run = db.get_run(run_id)
+        if not run:
+            return {"error": "Run not found"}
 
-                    if config_file.exists():
-                        with open(config_file) as cf:
-                            run["trace_config"] = json.load(cf)
+        # Check for additional trace files
+        trace_dir = output_dir / run_id
+        if trace_dir.exists():
+            config_file = trace_dir / "config.json"
+            metrics_file = trace_dir / "metrics.json"
 
-                    if metrics_file.exists():
-                        with open(metrics_file) as mf:
-                            run["trace_metrics"] = json.load(mf)
+            if config_file.exists():
+                with open(config_file) as cf:
+                    config_data = json.load(cf)
+                    run["trace_config"] = config_data
+                    if "attack" in config_data:
+                        run["attack"] = config_data["attack"]
 
-                return run
+            if metrics_file.exists():
+                with open(metrics_file) as mf:
+                    metrics_data = json.load(mf)
+                    run["trace_metrics"] = metrics_data
+                    if "victim_metrics" in metrics_data:
+                        run["victim_metrics"] = metrics_data["victim_metrics"]
 
-        return {"error": "Run not found"}
+        return run
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
@@ -189,16 +184,15 @@ def create_app(output_dir: Path, static_dir: Path | None = None) -> FastAPI:
     @app.get("/api/stream")
     async def stream_events() -> StreamingResponse:
         async def event_generator():
-            last_position = 0
+            last_count = db.count_runs()
             while True:
-                if runs_file.exists():
-                    with open(runs_file) as f:
-                        f.seek(last_position)
-                        for line in f:
-                            if line.strip():
-                                data = json.loads(line)
-                                yield f"data: {json.dumps(data)}\n\n"
-                        last_position = f.tell()
+                current_count = db.count_runs()
+                if current_count > last_count:
+                    # Get new runs
+                    new_runs = db.get_runs(limit=current_count - last_count, offset=0)
+                    for run in reversed(new_runs):
+                        yield f"data: {json.dumps(run)}\n\n"
+                    last_count = current_count
                 await asyncio.sleep(1)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")

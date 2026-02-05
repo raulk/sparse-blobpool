@@ -109,12 +109,28 @@ class AnomalyThresholds:
 
 
 @dataclass
+class AttackScenarioConfig:
+    """Configuration for attack scenario generation."""
+
+    enable_attacks: bool = True
+    attack_probability: float = 0.3  # Probability of including an attack in a run
+    # Relative weights for each attack type (normalized at runtime)
+    attack_weights: dict[str, float] = field(default_factory=lambda: {
+        "spam_t1_1": 0.25,        # Valid headers, unavailable data
+        "spam_t1_2": 0.25,        # Invalid headers
+        "withholding": 0.25,      # Column withholding
+        "poisoning": 0.25,        # Targeted blobpool poisoning
+    })
+
+
+@dataclass
 class FuzzerConfig:
     output_dir: Path
     max_runs: int | None = None
     simulation_duration: float = 60.0
     parameter_ranges: ParameterRanges = field(default_factory=ParameterRanges)
     anomaly_thresholds: AnomalyThresholds = field(default_factory=AnomalyThresholds)
+    attack_config: AttackScenarioConfig = field(default_factory=AttackScenarioConfig)
     overview_file: str = "runs.ndjson"
     trace_on_anomaly_only: bool = True
     master_seed: int | None = None
@@ -166,6 +182,20 @@ class FuzzerConfig:
             AnomalyThresholds(**thresholds_kwargs) if thresholds_kwargs else AnomalyThresholds()
         )
 
+        # Parse attack config if provided
+        attack_data = data.get("attack", {})
+        attack_config_kwargs = {}
+        if "enable_attacks" in attack_data:
+            attack_config_kwargs["enable_attacks"] = attack_data["enable_attacks"]
+        if "attack_probability" in attack_data:
+            attack_config_kwargs["attack_probability"] = attack_data["attack_probability"]
+        if "attack_weights" in attack_data:
+            attack_config_kwargs["attack_weights"] = attack_data["attack_weights"]
+
+        attack_config = (
+            AttackScenarioConfig(**attack_config_kwargs) if attack_config_kwargs else AttackScenarioConfig()
+        )
+
         from pathlib import Path as PathClass
 
         slot_tail_buffer = SLOT_DURATION_SECS - 0.0001
@@ -188,6 +218,7 @@ class FuzzerConfig:
             simulation_duration=duration,
             parameter_ranges=parameter_ranges,
             anomaly_thresholds=anomaly_thresholds,
+            attack_config=attack_config,
             overview_file=output.get("overview_file", "runs.ndjson"),
             trace_on_anomaly_only=execution.get("trace_on_anomaly_only", True),
             master_seed=execution.get("master_seed"),

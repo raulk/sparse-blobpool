@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+from typing import TYPE_CHECKING, Any
 from sparse_blobpool.scenarios.baseline import run_baseline_scenario
 
 if TYPE_CHECKING:
@@ -22,6 +21,65 @@ def execute_baseline(
             run_duration=duration,
         )
         results = sim.finalize_metrics()
+        return (results, None)
+    except Exception as e:
+        return (None, e)
+
+
+def execute_attack(
+    attack_type: str,
+    config: SimulationConfig,
+    attack_config: Any,
+    num_transactions: int,
+    duration: float,
+) -> tuple[SimulationResults | None, Exception | None]:
+    """Execute an attack scenario from the registry.
+
+    Args:
+        attack_type: Type of attack from the registry
+        config: Simulation configuration
+        attack_config: Attack-specific configuration
+        num_transactions: Number of legitimate transactions
+        duration: Simulation duration
+
+    Returns:
+        Tuple of (results, error)
+    """
+    try:
+        match attack_type:
+            case "spam_t1_1" | "spam_t1_2":
+                from sparse_blobpool.scenarios.attacks.spam import run_spam_scenario
+                sim = run_spam_scenario(
+                    config=config,
+                    attack_config=attack_config,
+                    num_transactions=num_transactions,
+                    run_duration=duration,
+                )
+            case "withholding_t2_1":
+                from sparse_blobpool.scenarios.attacks.withholding import run_withholding_scenario
+                sim = run_withholding_scenario(
+                    config=config,
+                    attack_config=attack_config,
+                    num_transactions=num_transactions,
+                    run_duration=duration,
+                )
+            case "poisoning_t4_2":
+                from sparse_blobpool.scenarios.attacks.poisoning import run_poisoning_scenario
+                sim = run_poisoning_scenario(
+                    config=config,
+                    attack_config=attack_config,
+                    num_transactions=num_transactions,
+                    run_duration=duration,
+                )
+            case _:
+                raise ValueError(f"Unknown attack type: {attack_type}")
+
+        results = sim.finalize_metrics()
+
+        # Add attack type to results metadata if possible
+        if hasattr(results, "_attack_type"):
+            results._attack_type = attack_type  # type: ignore
+
         return (results, None)
     except Exception as e:
         return (None, e)

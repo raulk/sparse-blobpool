@@ -9,6 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
+from sparse_blobpool.actors.adversaries.victim_selection import (
+    VictimSelectionConfig,
+    VictimSelectionStrategy,
+    VictimSelector,
+)
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor
 from sparse_blobpool.core.events import Command, EventPayload, Message
@@ -21,6 +26,7 @@ from sparse_blobpool.protocol.messages import NewPooledTransactionHashes
 @dataclass
 class InjectNext(Command):
     """Trigger next poison tx injection in a nonce chain."""
+    victim_id: ActorId
 
 
 @dataclass(frozen=True)
@@ -30,8 +36,7 @@ class PoisoningScenarioConfig:
     num_attacker_connections: int = 4
     nonce_chain_length: int = 16
     injection_interval: float = 0.1
-    num_victims: int = 1
-    victim_fraction: float | None = None
+    victim_selection_config: VictimSelectionConfig | None = None
     attack_start_time: float = 0.0
 
 
@@ -55,21 +60,33 @@ class TargetedPoisoningAdversary(Actor):
         actor_id: ActorId,
         simulator: Simulator,
         controlled_nodes: list[ActorId],
-        victim_id: ActorId | None,
         poisoning_config: PoisoningScenarioConfig,
+        all_nodes: list[ActorId],
     ) -> None:
         super().__init__(actor_id, simulator)
         self._controlled_nodes = controlled_nodes
-        self._victim_id = victim_id
         self._poisoning_config = poisoning_config
-        self._current_nonce = 0
         self._sender = Address(f"0xattacker_{actor_id}")
         self._attack_started = False
         self._attack_stopped = False
 
+        # Initialize victim selector
+        victim_config = poisoning_config.victim_selection_config or VictimSelectionConfig(
+            strategy=VictimSelectionStrategy.RANDOM,
+            num_victims=1
+        )
+        self._victim_selector = VictimSelector(
+            victim_config,
+            simulator,
+            all_nodes,
+            controlled_nodes=controlled_nodes,
+        )
+        self._victim_nonces: dict[ActorId, int] = {}
+
     @property
-    def victim_id(self) -> ActorId | None:
-        return self._victim_id
+    def victims(self) -> list[ActorId]:
+        """Get list of victim nodes."""
+        return self._victim_selector.get_victims()
 
     @property
     def controlled_nodes(self) -> list[ActorId]:
@@ -87,23 +104,25 @@ class TargetedPoisoningAdversary(Actor):
 
     def _on_command(self, cmd: Command) -> None:
         match cmd:
-            case InjectNext():
-                self._inject_next_tx()
+            case InjectNext(victim_id=victim_id):
+                self._inject_next_tx(victim_id)
 
     def execute(self) -> None:
-        if self._victim_id is None:
-            return  # No victim configured
-
         self._attack_started = True
-        self._inject_next_tx()
+        # Start injection for each victim
+        for victim_id in self._victim_selector.get_victims():
+            self._victim_nonces[victim_id] = 0
+            self._inject_next_tx(victim_id)
 
-    def _inject_next_tx(self) -> None:
+    def _inject_next_tx(self, victim_id: ActorId) -> None:
         if self._attack_stopped:
             return
-        if self._current_nonce >= self._poisoning_config.nonce_chain_length:
-            return  # Chain complete
 
-        tx_hash = self._create_poison_tx()
+        nonce = self._victim_nonces.get(victim_id, 0)
+        if nonce >= self._poisoning_config.nonce_chain_length:
+            return  # Chain complete for this victim
+
+        tx_hash = self._create_poison_tx(victim_id, nonce)
 
         announcement = NewPooledTransactionHashes(
             sender=self.id,
@@ -113,28 +132,33 @@ class TargetedPoisoningAdversary(Actor):
             cell_mask=ALL_ONES,  # Claim to be provider
         )
 
-        if self._victim_id is not None:
-            self.send(announcement, to=self._victim_id)
+        self.send(announcement, to=victim_id)
 
-        self._current_nonce += 1
+        # Record poisoning in metrics
+        self.simulator.metrics.record_victim_targeted(victim_id, "poisoning", tx_hash)
+        self.simulator.metrics.record_poisoning(victim_id, tx_hash)
 
-        if self._current_nonce < self._poisoning_config.nonce_chain_length:
+        self._victim_nonces[victim_id] = nonce + 1
+
+        if nonce + 1 < self._poisoning_config.nonce_chain_length:
             self.schedule_command(
                 self._poisoning_config.injection_interval,
-                InjectNext(),
+                InjectNext(victim_id=victim_id),
             )
 
-    def _create_poison_tx(self) -> TxHash:
-        data = f"poison:{self.id}:{self._sender}:{self._current_nonce}".encode()
+    def _create_poison_tx(self, victim_id: ActorId, nonce: int) -> TxHash:
+        data = f"poison:{self.id}:{victim_id}:{self._sender}:{nonce}".encode()
         return TxHash(sha256(data).hexdigest())
 
     def get_attack_progress(self) -> dict[str, int | float]:
+        total_nonces = sum(self._victim_nonces.values())
         return {
-            "nonces_injected": self._current_nonce,
-            "target_nonces": self._poisoning_config.nonce_chain_length,
+            "nonces_injected": total_nonces,
+            "target_nonces": self._poisoning_config.nonce_chain_length * len(self.victims),
             "attacker_nodes": len(
                 self._controlled_nodes[: self._poisoning_config.num_attacker_connections]
             ),
+            "victim_count": len(self.victims),
         }
 
 
@@ -171,31 +195,27 @@ def run_poisoning_scenario(
     sim = Simulator.build(config)
 
     all_node_ids = [node.id for node in sim.nodes]
-    victims = _select_victims(sim, attack_config, all_node_ids)
 
-    adversaries: list[TargetedPoisoningAdversary] = []
-    for i, victim_id in enumerate(victims):
-        controlled_nodes = _select_attacker_nodes(
-            sim, attack_config.num_attacker_connections, all_node_ids, victim_id
-        )
+    # Select controlled nodes
+    controlled_nodes = _select_attacker_nodes(
+        sim, attack_config.num_attacker_connections, all_node_ids
+    )
 
-        adversary_id = ActorId(f"poisoning_adversary_{i}")
-        adversary = TargetedPoisoningAdversary(
-            actor_id=adversary_id,
-            simulator=sim,
-            controlled_nodes=controlled_nodes,
-            victim_id=victim_id,
-            poisoning_config=attack_config,
-        )
-        sim.register_actor(adversary)
-        adversaries.append(adversary)
+    adversary_id = ActorId("poisoning_adversary")
+    adversary = TargetedPoisoningAdversary(
+        actor_id=adversary_id,
+        simulator=sim,
+        controlled_nodes=controlled_nodes,
+        poisoning_config=attack_config,
+        all_nodes=all_node_ids,
+    )
+    sim.register_actor(adversary)
 
     for _ in range(num_transactions):
         origin_idx = sim.rng.randint(0, len(sim.nodes) - 1)
         sim.broadcast_transaction(sim.nodes[origin_idx])
 
-    for adversary in adversaries:
-        adversary.execute()
+    adversary.execute()
 
     sim.block_producer.start()
     sim.run(run_duration)
@@ -203,35 +223,14 @@ def run_poisoning_scenario(
     return sim
 
 
-def _select_victims(
-    sim: Simulator,
-    attack_config: PoisoningScenarioConfig,
-    all_node_ids: list[ActorId],
-) -> list[ActorId]:
-    """Select victim nodes to target."""
-    if attack_config.victim_fraction is not None:
-        num_victims = max(1, int(len(all_node_ids) * attack_config.victim_fraction))
-    else:
-        num_victims = attack_config.num_victims
-
-    if num_victims >= len(all_node_ids):
-        return list(all_node_ids)
-
-    indices = sim.rng.sample(range(len(all_node_ids)), num_victims)
-    return [all_node_ids[i] for i in indices]
-
-
 def _select_attacker_nodes(
     sim: Simulator,
     num_connections: int,
     all_node_ids: list[ActorId],
-    exclude_victim: ActorId,
 ) -> list[ActorId]:
-    """Select nodes to use as attacker connections (excluding the victim)."""
-    available = [nid for nid in all_node_ids if nid != exclude_victim]
+    """Select nodes to use as attacker connections."""
+    if num_connections >= len(all_node_ids):
+        return all_node_ids
 
-    if num_connections >= len(available):
-        return available
-
-    indices = sim.rng.sample(range(len(available)), num_connections)
-    return [available[i] for i in indices]
+    indices = sim.rng.sample(range(len(all_node_ids)), num_connections)
+    return [all_node_ids[i] for i in indices]

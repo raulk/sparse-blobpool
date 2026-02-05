@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from random import Random
 from typing import TYPE_CHECKING
 
+from sparse_blobpool.fuzzer.database import RunsDatabase
 from sparse_blobpool.fuzzer.executor import (
     Anomaly,
     detect_anomalies,
@@ -40,9 +41,9 @@ def _handle_sigint(signum: int, frame: object) -> None:
     _running = False
 
 
-def append_summary(path: Path, summary: dict[str, object]) -> None:
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(summary) + "\n")
+def save_run(db: RunsDatabase, summary: dict[str, object]) -> None:
+    """Save run to SQLite database."""
+    db.insert_run(summary)  # type: ignore[arg-type]
 
 
 def write_trace(
@@ -70,7 +71,9 @@ def run_fuzzer(config: FuzzerConfig) -> None:
     rng = Random(config.master_seed) if config.master_seed is not None else Random()
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    ndjson_path = config.output_dir / config.overview_file
+
+    # Initialize SQLite database
+    db = RunsDatabase(config.output_dir / "runs.db")
 
     run_count = 0
     while _running:
@@ -135,7 +138,7 @@ def run_fuzzer(config: FuzzerConfig) -> None:
         if error is not None:
             summary["error"] = str(error)
 
-        append_summary(ndjson_path, summary)
+        save_run(db, summary)
 
         status_display = "OK" if status == "success" else status
         print(f"[{run_id}] BASELINE seed={run_seed} ... {status_display} ({wall_clock:.1f}s)")
@@ -190,7 +193,9 @@ def replay_run(seed: int, config: FuzzerConfig) -> None:
     status = determine_status(anomalies, error)
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    ndjson_path = config.output_dir / config.overview_file
+
+    # Initialize SQLite database
+    db = RunsDatabase(config.output_dir / "runs.db")
 
     summary = {
         "run_id": run_id,
@@ -210,7 +215,7 @@ def replay_run(seed: int, config: FuzzerConfig) -> None:
     if error is not None:
         summary["error"] = str(error)
 
-    append_summary(ndjson_path, summary)
+    save_run(db, summary)
 
     status_display = "OK" if status == "success" else status
     print(f"[{run_id}] BASELINE seed={seed} ... {status_display} ({wall_clock:.1f}s) [REPLAY]")

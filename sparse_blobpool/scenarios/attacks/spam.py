@@ -9,6 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
+from sparse_blobpool.actors.adversaries.victim_selection import (
+    VictimSelectionConfig,
+    VictimSelectionStrategy,
+    VictimSelector,
+)
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor
 from sparse_blobpool.core.events import Command, EventPayload, Message
@@ -33,7 +38,7 @@ class SpamScenarioConfig:
     num_attacker_nodes: int = 1
     attack_start_time: float = 0.0
     attack_duration: float | None = None
-    target_fraction: float | None = None
+    victim_selection_config: VictimSelectionConfig | None = None
 
 
 class SpamAdversary(Actor):
@@ -60,9 +65,25 @@ class SpamAdversary(Actor):
         self._attack_started = False
         self._attack_stopped = False
 
+        # Initialize victim selector
+        victim_config = spam_config.victim_selection_config or VictimSelectionConfig(
+            strategy=VictimSelectionStrategy.ALL_NODES
+        )
+        self._victim_selector = VictimSelector(
+            victim_config,
+            simulator,
+            all_nodes,
+            controlled_nodes=controlled_nodes,
+        )
+
     @property
     def controlled_nodes(self) -> list[ActorId]:
         return self._controlled_nodes
+
+    @property
+    def victims(self) -> list[ActorId]:
+        """Get list of victim nodes."""
+        return self._victim_selector.get_victims()
 
     def on_event(self, payload: EventPayload) -> None:
         match payload:
@@ -104,22 +125,18 @@ class SpamAdversary(Actor):
             cell_mask=cell_mask,
         )
 
-        targets = self._select_targets()
+        # Use victim selector to determine targets
+        targets = self._victim_selector.get_victims()
         for target in targets:
             self.send(announcement, to=target)
+
+        # Record spam sent to victims in metrics
+        for victim_id in targets:
+            self.simulator.metrics.record_victim_targeted(victim_id, "spam", tx_hash)
 
     def _generate_spam_tx_hash(self) -> TxHash:
         data = f"spam:{self.id}:{self._spam_counter}".encode()
         return TxHash(sha256(data).hexdigest())
-
-    def _select_targets(self) -> list[ActorId]:
-        if self._spam_config.target_fraction is not None:
-            target_count = max(1, int(len(self._all_nodes) * self._spam_config.target_fraction))
-            if target_count >= len(self._all_nodes):
-                return self._all_nodes
-            indices = self.simulator.rng.sample(range(len(self._all_nodes)), target_count)
-            return [self._all_nodes[i] for i in indices]
-        return self._all_nodes
 
 
 def run_spam_scenario(
