@@ -66,3 +66,17 @@ test:
 lint:
     uv run ruff format .
     uv run ruff check . --fix
+
+# --- Heuristic simulator ---
+
+# Run heuristic simulator tests
+test-heuristic:
+    uv run pytest tests/test_heuristic_sim.py -v
+
+# Run parameter sweep (all params)
+sweep:
+    uv run python -m heuristic_sim.sweep
+
+# Run parameter sweep for a specific param
+sweep-param param:
+    uv run python -m heuristic_sim.sweep --param {{param}}
