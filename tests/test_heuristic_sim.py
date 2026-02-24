@@ -367,3 +367,50 @@ class TestMetrics:
         table = result.summary_table()
         assert "Behavior" in table
         assert "honest" in table
+
+
+# ---------------------------------------------------------------------------
+# Task 11: Integration test with all 6 attacks
+# ---------------------------------------------------------------------------
+
+
+class TestFullIntegration:
+    """Integration test: all 6 attacks running simultaneously."""
+
+    def test_all_attacks_detected_no_false_positives(self):
+        scenario = Scenario(
+            n_honest=30,
+            attackers=[
+                (3, "spammer", {"rate": 5.0, "below_includability": True}),
+                (3, "withholder", {"random_fail_rate": 1.0}),
+                (2, "spoofer", {}),
+                (2, "free_rider", {}),
+                (2, "non_announcer", {}),
+                (3, "selective_signaler", {"n_senders": 5, "txs_per_sender": 16}),
+            ],
+            tx_arrival_rate=2.0,
+            t_end=300.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+
+        assert result.false_positives == 0, f"False positives: {result.false_positives}"
+        assert result.h1_rejections > 0, "H1 should reject below-fee spam"
+        assert result.h2_evictions > 0, "H2 should evict uncorroborated txs"
+        assert result.disconnects_by_behavior.get("withholder", 0) > 0, (
+            "H4 should disconnect withholders"
+        )
+        assert result.disconnects_by_behavior.get("spoofer", 0) > 0, (
+            "H4 should disconnect spoofers"
+        )
+
+    def test_results_reproducible(self):
+        scenario = Scenario(
+            n_honest=10,
+            attackers=[(3, "withholder", {"random_fail_rate": 0.8})],
+            tx_arrival_rate=1.0,
+            t_end=60.0,
+        )
+        r1 = run_simulation(HeuristicConfig(), scenario, seed=99)
+        r2 = run_simulation(HeuristicConfig(), scenario, seed=99)
+        assert r1.total_accepted == r2.total_accepted
+        assert r1.h4_disconnects == r2.h4_disconnects
