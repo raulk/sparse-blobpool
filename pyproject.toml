@@ -33,7 +33,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["sparse_blobpool*"]
+include = ["sparse_blobpool*", "heuristic_sim*"]
 
 [tool.uv]
 package = true
@@ -60,7 +60,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["sparse_blobpool"]
+known-first-party = ["sparse_blobpool", "heuristic_sim"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
