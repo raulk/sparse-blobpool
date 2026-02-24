@@ -4,14 +4,17 @@ import random
 
 from heuristic_sim.blobpool_sim import (
     ALL_ONES,
+    CELLS_PER_BLOB,
     Event,
     EventLoop,
     FreeRiderBehavior,
     HeuristicConfig,
     HonestBehavior,
+    Node,
     NonAnnouncerBehavior,
     PeerState,
     Role,
+    Scenario,
     SelectiveSignalerBehavior,
     SpammerBehavior,
     SpooferBehavior,
@@ -21,6 +24,7 @@ from heuristic_sim.blobpool_sim import (
     columns_to_mask,
     mask_to_columns,
     popcount,
+    run_simulation,
 )
 
 # ---------------------------------------------------------------------------
@@ -225,3 +229,141 @@ class TestPeerBehaviors:
         events = peer.generate_events(t_start=0.0, t_end=10.0, tx_rate=1.0)
         assert len(events) > 0
         assert all(e.kind == "inbound_request" for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Node class with H1-H5 heuristics
+# ---------------------------------------------------------------------------
+
+
+class TestNodeAnnounce:
+    def test_honest_announcement_accepted(self):
+        cfg = HeuristicConfig()
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "honest", 0.0))
+        events = node.handle_announce(
+            peer_id="p1", tx_hash="0xabc", sender="s1", nonce=0,
+            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=1.0,
+        )
+        assert node.pool.contains("0xabc")
+        sat_events = [e for e in events if e.kind == "saturation_check"]
+        assert len(sat_events) == 1
+        assert sat_events[0].t == 1.0 + cfg.saturation_timeout
+
+    def test_h1_rejects_below_includability(self):
+        cfg = HeuristicConfig(includability_discount=0.7, blob_base_fee=1.0)
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "honest", 0.0))
+        node.handle_announce(
+            peer_id="p1", tx_hash="0xabc", sender="s1", nonce=0,
+            fee=0.5, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=1.0,
+        )
+        assert not node.pool.contains("0xabc")
+
+    def test_duplicate_announce_records_additional_peer(self):
+        cfg = HeuristicConfig()
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "honest", 0.0))
+        node.add_peer(PeerState("p2", "honest", 0.0))
+        node.handle_announce(
+            peer_id="p1", tx_hash="0xabc", sender="s1", nonce=0,
+            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=1.0,
+        )
+        node.handle_announce(
+            peer_id="p2", tx_hash="0xabc", sender="s1", nonce=0,
+            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=2.0,
+        )
+        tx = node.pool.get("0xabc")
+        assert tx is not None
+        assert tx.announcers == {"p1", "p2"}
+
+
+class TestNodeCellRequest:
+    def test_cell_request_includes_c_extra(self):
+        cfg = HeuristicConfig(c_extra_max=4, custody_columns=8)
+        node = Node(cfg, seed=42)
+        columns = node.compute_request_columns(is_provider=False)
+        custody = mask_to_columns(node.custody_mask)
+        assert len(columns) > len(custody)
+        assert len(columns) <= len(custody) + cfg.c_extra_max
+        for c in custody:
+            assert c in columns
+
+    def test_provider_requests_all_columns(self):
+        cfg = HeuristicConfig()
+        node = Node(cfg, seed=42)
+        columns = node.compute_request_columns(is_provider=True)
+        assert len(columns) == CELLS_PER_BLOB
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Simulation runner
+# ---------------------------------------------------------------------------
+
+
+class TestSimulation:
+    def test_honest_only_no_disconnects(self):
+        scenario = Scenario(n_honest=20, attackers=[], tx_arrival_rate=1.0, t_end=60.0)
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        assert result.disconnects_by_behavior.get("honest", 0) == 0
+        assert result.total_accepted > 0
+
+    def test_spammer_below_fee_all_rejected(self):
+        scenario = Scenario(
+            n_honest=10,
+            attackers=[(5, "spammer", {"rate": 5.0, "below_includability": True})],
+            tx_arrival_rate=0.5, t_end=30.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        assert result.h1_rejections > 0
+
+    def test_withholder_detected_by_h4(self):
+        scenario = Scenario(
+            n_honest=10,
+            attackers=[(3, "withholder", {"random_fail_rate": 1.0})],
+            tx_arrival_rate=1.0, t_end=120.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        assert result.disconnects_by_behavior.get("withholder", 0) > 0
+
+    def test_selective_signaler_evicted_by_h2(self):
+        scenario = Scenario(
+            n_honest=10,
+            attackers=[(3, "selective_signaler", {"n_senders": 5, "txs_per_sender": 16})],
+            tx_arrival_rate=0.5, t_end=120.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        assert result.h2_evictions > 0
+
+
+# ---------------------------------------------------------------------------
+# Task 8: Metrics summary
+# ---------------------------------------------------------------------------
+
+
+class TestMetrics:
+    def test_detection_rate(self):
+        scenario = Scenario(
+            n_honest=10,
+            attackers=[
+                (3, "withholder", {"random_fail_rate": 1.0}),
+                (2, "spoofer", {}),
+            ],
+            tx_arrival_rate=2.0, t_end=120.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        summary = result.detection_summary()
+        assert summary["withholder"]["detected"] > 0
+        assert summary["spoofer"]["detected"] > 0
+        assert summary["honest"]["detected"] == 0
+
+    def test_summary_table(self):
+        scenario = Scenario(
+            n_honest=10,
+            attackers=[(2, "spammer", {"rate": 5.0, "below_includability": True})],
+            tx_arrival_rate=1.0, t_end=30.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        table = result.summary_table()
+        assert "Behavior" in table
+        assert "honest" in table
