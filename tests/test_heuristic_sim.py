@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+import random
+
 from heuristic_sim.blobpool_sim import (
     ALL_ONES,
     Event,
     EventLoop,
+    FreeRiderBehavior,
     HeuristicConfig,
+    HonestBehavior,
+    NonAnnouncerBehavior,
     PeerState,
     Role,
+    SelectiveSignalerBehavior,
+    SpammerBehavior,
+    SpooferBehavior,
     TxEntry,
     TxStore,
+    WithholderBehavior,
     columns_to_mask,
     mask_to_columns,
     popcount,
@@ -147,3 +156,72 @@ class TestTxState:
         tx.announcers.add("peer_1")
         tx.announcers.add("peer_2")
         assert len(tx.announcers) == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Peer behavior generators
+# ---------------------------------------------------------------------------
+
+
+class TestPeerBehaviors:
+    def test_honest_peer_generates_announcements(self):
+        rng = random.Random(42)
+        peer = HonestBehavior(peer_id="h1", rng=rng)
+        events = peer.generate_events(t_start=0.0, t_end=10.0, tx_rate=1.0)
+        assert len(events) > 0
+        assert all(e.kind == "announce" for e in events)
+        provider_count = sum(1 for e in events if e.data["cell_mask"] == ALL_ONES)
+        assert 0 <= provider_count <= len(events)
+
+    def test_spammer_generates_below_fee(self):
+        rng = random.Random(42)
+        peer = SpammerBehavior(peer_id="s1", rng=rng, rate=5.0, below_includability=True)
+        events = peer.generate_events(
+            t_start=0.0, t_end=10.0, blob_base_fee=1.0, includability_discount=0.7,
+        )
+        assert len(events) > 0
+        for e in events:
+            assert e.data["fee"] < 1.0 * 0.7
+
+    def test_withholder_fails_random_columns(self):
+        rng = random.Random(42)
+        peer = WithholderBehavior(peer_id="w1", rng=rng, random_fail_rate=1.0)
+        custody = columns_to_mask([0, 1, 2, 3, 4, 5, 6, 7])
+        requested = [0, 1, 2, 3, 50]
+        result = peer.respond_to_cell_request(requested, custody)
+        assert 0 in result["served"]
+        assert 50 in result["failed"]
+
+    def test_selective_signaler_exclusive_announcements(self):
+        rng = random.Random(42)
+        peer = SelectiveSignalerBehavior(peer_id="ss1", rng=rng, n_senders=3, txs_per_sender=16)
+        events = peer.generate_events(t_start=0.0, t_end=60.0)
+        assert all(e.data.get("exclusive", False) for e in events)
+        senders: dict[str, list[int]] = {}
+        for e in events:
+            s = e.data["sender"]
+            senders.setdefault(s, []).append(e.data["nonce"])
+        for _s, nonces in senders.items():
+            assert len(nonces) <= 16
+            assert nonces == sorted(nonces)
+
+    def test_free_rider_never_provider(self):
+        rng = random.Random(42)
+        peer = FreeRiderBehavior(peer_id="fr1", rng=rng)
+        events = peer.generate_events(t_start=0.0, t_end=10.0, tx_rate=2.0)
+        assert len(events) > 0
+        assert all(not e.data["is_provider"] for e in events)
+
+    def test_spoofer_fails_all_cells(self):
+        rng = random.Random(42)
+        peer = SpooferBehavior(peer_id="sp1", rng=rng)
+        result = peer.respond_to_cell_request([0, 1, 2, 50, 100], 0)
+        assert result["served"] == []
+        assert len(result["failed"]) == 5
+
+    def test_non_announcer_generates_requests_not_announces(self):
+        rng = random.Random(42)
+        peer = NonAnnouncerBehavior(peer_id="na1", rng=rng)
+        events = peer.generate_events(t_start=0.0, t_end=10.0, tx_rate=1.0)
+        assert len(events) > 0
+        assert all(e.kind == "inbound_request" for e in events)
