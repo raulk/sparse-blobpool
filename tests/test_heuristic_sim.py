@@ -2,30 +2,32 @@ from __future__ import annotations
 
 import random
 
-from heuristic_sim.blobpool_sim import (
+from heuristic_sim.config import (
     ALL_ONES,
     CELLS_PER_BLOB,
-    Event,
-    EventLoop,
-    FreeRiderBehavior,
+    EvictionPolicy,
     HeuristicConfig,
-    HonestBehavior,
-    Node,
-    NonAnnouncerBehavior,
-    PeerState,
     Role,
     Scenario,
-    SelectiveSignalerBehavior,
-    SpammerBehavior,
-    SpooferBehavior,
-    TxEntry,
-    TxStore,
-    WithholderBehavior,
     columns_to_mask,
     mask_to_columns,
     popcount,
-    run_simulation,
 )
+from heuristic_sim.events import Event, EventLoop
+from heuristic_sim.metrics import SimulationResult
+from heuristic_sim.node import Node, TokenBucket
+from heuristic_sim.peers import (
+    FreeRiderBehavior,
+    HonestBehavior,
+    NonAnnouncerBehavior,
+    PeerState,
+    SelectiveSignalerBehavior,
+    SpammerBehavior,
+    SpooferBehavior,
+    WithholderBehavior,
+)
+from heuristic_sim.pool import TxEntry, TxStore
+from heuristic_sim.runner import run_simulation
 
 # ---------------------------------------------------------------------------
 # Task 1: Event loop
@@ -532,11 +534,10 @@ class TestFullIntegration:
             if e["event"] == "accept"
         ]
         # Verify through the node's peer state (re-run to inspect)
-        from heuristic_sim.blobpool_sim import _create_peers_and_events, EventLoop
+        from heuristic_sim.runner import _create_peers_and_events
         import random as stdlib_random
-        from heuristic_sim.blobpool_sim import Node as N
         rng = stdlib_random.Random(42)
-        node = N(HeuristicConfig(), seed=rng.randint(0, 2**32))
+        node = Node(HeuristicConfig(), seed=rng.randint(0, 2**32))
         loop = EventLoop()
         _create_peers_and_events(scenario, HeuristicConfig(), node, loop, rng)
         actual_inbound = sum(1 for p in node.peers.values() if p.is_inbound)
@@ -556,3 +557,107 @@ class TestFullIntegration:
         honest_bw = result.bandwidth_by_behavior["honest"]
         assert honest_bw["in"] > 0
         assert honest_bw["out"] > 0
+
+    def test_pool_occupancy_tracked_over_time(self):
+        scenario = Scenario(
+            n_honest=10, attackers=[], tx_arrival_rate=2.0, t_end=60.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        assert len(result.pool_occupancy) > 1
+        # Timestamps should be monotonically non-decreasing
+        for i in range(1, len(result.pool_occupancy)):
+            assert result.pool_occupancy[i][0] >= result.pool_occupancy[i - 1][0]
+
+
+# ---------------------------------------------------------------------------
+# Ported features: EvictionPolicy, TokenBucket
+# ---------------------------------------------------------------------------
+
+
+class TestEvictionPolicy:
+    def test_fee_based_evicts_lowest_fee(self):
+        pool = TxStore(capacity=2, eviction_policy=EvictionPolicy.FEE_BASED)
+        for i, fee in enumerate([5.0, 10.0, 15.0]):
+            pool.add(TxEntry(
+                tx_hash=f"tx{i}", sender=f"s{i}", nonce=0,
+                fee=fee, first_seen=float(i), role=Role.SAMPLER,
+            ))
+        assert pool.count == 2
+        assert pool.get("tx0") is None
+        assert pool.get("tx1") is not None
+
+    def test_age_based_evicts_oldest(self):
+        pool = TxStore(capacity=2, eviction_policy=EvictionPolicy.AGE_BASED)
+        for i, fee in enumerate([15.0, 5.0, 10.0]):
+            pool.add(TxEntry(
+                tx_hash=f"tx{i}", sender=f"s{i}", nonce=0,
+                fee=fee, first_seen=float(i), role=Role.SAMPLER,
+            ))
+        assert pool.count == 2
+        # tx0 is oldest (first_seen=0.0), should be evicted
+        assert pool.get("tx0") is None
+        assert pool.get("tx1") is not None
+        assert pool.get("tx2") is not None
+
+    def test_hybrid_considers_both_fee_and_age(self):
+        pool = TxStore(
+            capacity=2, eviction_policy=EvictionPolicy.HYBRID, age_weight=0.5,
+        )
+        # tx0: low fee, old
+        # tx1: high fee, recent
+        # tx2: medium fee, medium age
+        pool.add(TxEntry(
+            tx_hash="old_cheap", sender="s0", nonce=0,
+            fee=1.0, first_seen=0.0, role=Role.SAMPLER,
+        ))
+        pool.add(TxEntry(
+            tx_hash="new_expensive", sender="s1", nonce=0,
+            fee=10.0, first_seen=10.0, role=Role.SAMPLER,
+        ))
+        pool.add(TxEntry(
+            tx_hash="mid", sender="s2", nonce=0,
+            fee=5.0, first_seen=5.0, role=Role.SAMPLER,
+        ))
+        assert pool.count == 2
+        # old_cheap should be evicted (worst combined score)
+        assert pool.get("old_cheap") is None
+        assert pool.get("new_expensive") is not None
+
+
+class TestTokenBucket:
+    def test_initial_burst_allowed(self):
+        bucket = TokenBucket(rate=1.0, burst=3)
+        assert bucket.consume(0.0)
+        assert bucket.consume(0.0)
+        assert bucket.consume(0.0)
+        assert not bucket.consume(0.0)
+
+    def test_refills_over_time(self):
+        bucket = TokenBucket(rate=1.0, burst=1)
+        assert bucket.consume(0.0)
+        assert not bucket.consume(0.0)
+        assert bucket.consume(1.0)
+
+    def test_rate_limiting_in_node(self):
+        cfg = HeuristicConfig(max_announcements_per_second=1.0, burst_allowance=2)
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "honest", 0.0))
+        # First two consume the burst
+        node.handle_announce(
+            peer_id="p1", tx_hash="tx1", sender="s1", nonce=0,
+            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=0.0,
+        )
+        node.handle_announce(
+            peer_id="p1", tx_hash="tx2", sender="s2", nonce=0,
+            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=0.0,
+        )
+        # Third at same time should be rate-limited
+        node.handle_announce(
+            peer_id="p1", tx_hash="tx3", sender="s3", nonce=0,
+            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=0.0,
+        )
+        assert node.pool.contains("tx1")
+        assert node.pool.contains("tx2")
+        assert not node.pool.contains("tx3")
+        rate_limited = [e for e in node.log if e["event"] == "reject_rate_limit"]
+        assert len(rate_limited) == 1

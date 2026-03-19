@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from heuristic_sim.blobpool_sim import HeuristicConfig
+from heuristic_sim.config import HeuristicConfig
 from heuristic_sim.sim import DEFAULT_SCENARIO
 
 DESCRIPTION = """\

@@ -17,10 +17,21 @@ This is a discrete event simulator for EIP-8070 sparse blobpool protocol. Key co
     - `withholding.py` - T2.1 selective column withholding
     - `poisoning.py` - T4.2 targeted availability signaling
 - `sparse_blobpool/fuzzer/` - Fuzzer autopilot for continuous randomized testing
+- `heuristic_sim/` - Single-node heuristic tuning simulator (self-contained)
+  - `config.py` - Constants, HeuristicConfig (22 params), PRESETS, Scenario, EvictionPolicy
+  - `events.py` - Event, EventLoop (min-heap discrete event loop)
+  - `pool.py` - TxEntry, TxStore (fee/age/hybrid eviction policies)
+  - `peers.py` - PeerState, 7 peer behavior generators (honest + 6 attacks)
+  - `node.py` - Node with H1-H5 detection heuristics, TokenBucket rate limiting, peer scoring
+  - `metrics.py` - SimulationResult with summary_table
+  - `runner.py` - run_simulation, event dispatch, scenario wiring
+  - `sim.py` - CLI runner
+  - `sweep.py` - Parameter sweep tool
+  - `describe.py` - Reference guide for attacks/roles/heuristics
 - `fuzzer_ui/` - Web monitoring dashboard
   - `backend/` - FastAPI + WebSockets (Python, uv)
   - `frontend/` - React + TypeScript + Vite + TailwindCSS (pnpm)
-- `tests/` - 210+ tests with hypothesis property-based testing
+- `tests/` - Tests with hypothesis property-based testing
 
 ## Project-specific overrides
 

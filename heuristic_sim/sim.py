@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import argparse
 
-from heuristic_sim.blobpool_sim import HeuristicConfig, Scenario, run_simulation
+from heuristic_sim.config import HeuristicConfig, Scenario
+from heuristic_sim.runner import run_simulation
 
 DEFAULT_SCENARIO = Scenario(
     n_honest=30,
