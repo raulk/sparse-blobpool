@@ -20,6 +20,9 @@ ALL_ONES = (1 << CELLS_PER_BLOB) - 1
 RECONSTRUCTION_THRESHOLD = 64
 DEFAULT_MESH_DEGREE = 50
 MAX_TXS_PER_SENDER = 16
+ANNOUNCE_MSG_BYTES = 200
+CELL_BYTES = 2048
+REQUEST_MSG_OVERHEAD = 64
 
 # ---------------------------------------------------------------------------
 # Task 1: Event loop
@@ -89,6 +92,9 @@ class HeuristicConfig:
     tx_ttl: float = 300.0
     pool_capacity: int = 15000
     blob_base_fee: float = 1.0
+    max_request_to_announce_ratio: float = 5.0
+    inbound_score_discount: float = 0.15
+    provider_rate_tolerance: float = 0.3
 
 
 class Role(Enum):
@@ -106,12 +112,17 @@ class PeerState:
     peer_id: str
     behavior: str
     connected_at: float
+    is_inbound: bool = True
     score: float = 0.0
     provider_announcements: int = 0
     sampler_announcements: int = 0
     announcements_made: int = 0
     cells_served: int = 0
     included_contributions: int = 0
+    requests_received: int = 0
+    requests_sent_to: int = 0
+    bytes_in: int = 0
+    bytes_out: int = 0
     _random_col_results: deque[bool] = field(default_factory=lambda: deque(maxlen=100))
     disconnected: bool = False
     disconnect_reason: str = ""
@@ -275,6 +286,18 @@ class HonestBehavior(PeerBehavior):
                     "cell_mask": cell_mask,
                     "is_provider": is_provider,
                     "exclusive": False,
+                    "peer_id": self.peer_id,
+                },
+            ))
+            # Honest peers also request cells from the target node
+            # (they learn about txs from other peers and need cells too)
+            n_cols = len(self.custody) + self.rng.randint(1, 4)
+            requested_cols = self.rng.sample(range(CELLS_PER_BLOB), min(n_cols, CELLS_PER_BLOB))
+            events.append(Event(
+                t=t + self.rng.uniform(0.05, 0.2),
+                kind="inbound_request",
+                data={
+                    "columns": requested_cols,
                     "peer_id": self.peer_id,
                 },
             ))
@@ -655,6 +678,7 @@ class Node:
         else:
             peer.sampler_announcements += 1
         peer.announcements_made += 1
+        peer.bytes_in += ANNOUNCE_MSG_BYTES
 
         # H1: reject txs that can't be included at the current blob base fee
         if fee < self.config.blob_base_fee * self.config.includability_discount:
@@ -690,6 +714,8 @@ class Node:
 
         # H3: request cells with C_extra noise columns to detect withholders
         request_cols = self.compute_request_columns(is_provider=(role == Role.PROVIDER))
+        peer.requests_sent_to += 1
+        peer.bytes_out += REQUEST_MSG_OVERHEAD + len(request_cols) * 2
         follow_up.append(Event(
             t=t + 0.1,
             kind="request_cells",
@@ -715,6 +741,8 @@ class Node:
         peer = self.peers.get(peer_id)
         if peer is None or peer.disconnected:
             return follow_up
+
+        peer.bytes_in += len(served) * CELL_BYTES
 
         custody_set = set(custody_columns)
         for col in served:
@@ -756,7 +784,31 @@ class Node:
             })
         return []
 
-    def handle_inbound_request(self, peer_id: str, t: float) -> list[Event]:
+    def handle_inbound_request(
+        self, peer_id: str, columns: list[int], t: float,
+    ) -> list[Event]:
+        peer = self.peers.get(peer_id)
+        if peer is None or peer.disconnected:
+            return []
+
+        peer.requests_received += 1
+        peer.bytes_in += REQUEST_MSG_OVERHEAD + len(columns) * 2
+        peer.bytes_out += len(columns) * CELL_BYTES
+
+        self.log.append({
+            "t": t, "event": "inbound_request_tracked",
+            "peer_id": peer_id, "n_columns": len(columns),
+        })
+
+        # H5: disconnect peers with excessive request-to-announcement ratio
+        total_ann = max(peer.announcements_made, 1)
+        duration = t - peer.connected_at
+        if (
+            duration > 60.0
+            and peer.requests_received / total_ann > self.config.max_request_to_announce_ratio
+        ):
+            self.disconnect_peer(peer_id, "h5_request_ratio", t)
+
         return []
 
     def handle_block(self, included_txs: list[str], t: float) -> list[Event]:
@@ -775,15 +827,31 @@ class Node:
             if peer.disconnected:
                 continue
             duration = t - peer.connected_at
+
             duration_score = min(duration / 300.0, 1.0)
             contribution_score = min(peer.included_contributions / 10.0, 1.0)
             failure_penalty = peer.random_column_failure_rate()
             announcer_penalty = 0.0 if peer.announcements_made > 0 else (0.3 if duration > 60.0 else 0.0)
+
+            total_ann = max(peer.announcements_made, 1)
+            request_ratio = peer.requests_received / total_ann
+            request_ratio_penalty = min(request_ratio / self.config.max_request_to_announce_ratio, 1.0)
+
+            expected_p = self.config.provider_probability
+            actual_p = peer.provider_rate()
+            provider_deviation = abs(actual_p - expected_p)
+            provider_penalty = max(0.0, provider_deviation - self.config.provider_rate_tolerance)
+
+            inbound_penalty = self.config.inbound_score_discount if peer.is_inbound else 0.0
+
             peer.score = (
-                0.3 * duration_score
-                + 0.4 * contribution_score
-                - 0.2 * failure_penalty
-                - 0.1 * announcer_penalty
+                0.20 * duration_score
+                + 0.30 * contribution_score
+                - 0.15 * failure_penalty
+                - 0.10 * announcer_penalty
+                - 0.10 * request_ratio_penalty
+                - 0.05 * provider_penalty
+                - 0.10 * inbound_penalty
             )
         return []
 
@@ -801,6 +869,7 @@ class Scenario:
     t_end: float = 300.0
     blob_base_fee: float = 1.0
     block_interval: float = 12.0
+    inbound_ratio: float = 0.68
 
 
 @dataclass
@@ -810,11 +879,14 @@ class SimulationResult:
     h1_rejections: int = 0
     h2_evictions: int = 0
     h4_disconnects: int = 0
+    h5_disconnects: int = 0
     disconnects_by_behavior: dict[str, int] = field(default_factory=dict)
     false_positives: int = 0
     detection_latencies: dict[str, list[float]] = field(default_factory=dict)
     peer_scores: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     pool_occupancy: list[tuple[float, int]] = field(default_factory=list)
+    peer_counts: dict[str, int] = field(default_factory=dict)
+    bandwidth_by_behavior: dict[str, dict[str, int]] = field(default_factory=dict)
     log: list[dict[str, Any]] = field(default_factory=list)
 
     # --- Task 8: Metrics summary ---
@@ -830,22 +902,32 @@ class SimulationResult:
 
     def summary_table(self) -> str:
         lines = [
-            f"{'Behavior':<20} {'Detected':<10} {'H1 Rej':<10} {'H2 Evict':<10} {'H4 Disc':<10} {'FP':<5}",
-            "-" * 65,
+            f"{'Behavior':<20} {'Peers':<8} {'Detected':<12} {'H1 Rej':<10} {'H2 Evict':<10} "
+            f"{'H4 Disc':<10} {'H5 Disc':<10} {'FP':<5}",
+            "-" * 85,
         ]
         summary = self.detection_summary()
-        for behavior, stats in sorted(summary.items()):
+        all_behaviors = set(self.peer_counts.keys()) | set(summary.keys())
+        for behavior in sorted(all_behaviors):
+            total = self.peer_counts.get(behavior, 0)
+            detected = self.disconnects_by_behavior.get(behavior, 0)
+            det_str = f"{detected}/{total}" if total > 0 else "0"
             h1 = str(self.h1_rejections) if behavior == "spammer" else "-"
             h2 = str(self.h2_evictions) if behavior == "selective_signaler" else "-"
             h4 = str(self.h4_disconnects) if behavior in ("withholder", "spoofer") else "-"
+            h5 = str(self.h5_disconnects) if behavior in ("free_rider", "non_announcer") else "-"
             fp = str(self.false_positives) if behavior == "honest" else "-"
             lines.append(
-                f"{behavior:<20} {stats['detected']:<10} "
-                f"{h1:<10} {h2:<10} {h4:<10} {fp:<5}"
+                f"{behavior:<20} {total:<8} {det_str:<12} "
+                f"{h1:<10} {h2:<10} {h4:<10} {h5:<10} {fp:<5}"
             )
         lines.append(f"\nTotal accepted: {self.total_accepted}")
         lines.append(f"Total rejected: {self.total_rejected}")
         lines.append(f"Pool size at end: {self.pool_occupancy[-1][1] if self.pool_occupancy else 0}")
+        if self.bandwidth_by_behavior:
+            lines.append("\nBandwidth by behavior (bytes):")
+            for beh, bw in sorted(self.bandwidth_by_behavior.items()):
+                lines.append(f"  {beh:<20} in={bw['in']:>10,}  out={bw['out']:>10,}")
         return "\n".join(lines)
 
 
@@ -872,11 +954,13 @@ def _create_peers_and_events(
         "includability_discount": config.includability_discount,
     }
 
+    n_outbound = round(scenario.n_honest * (1 - scenario.inbound_ratio))
     for i in range(scenario.n_honest):
         pid = f"honest_{i}"
         behavior = HonestBehavior(pid, random.Random(rng.randint(0, 2**32)))
         behaviors[pid] = behavior
-        node.add_peer(PeerState(pid, "honest", 0.0))
+        is_inbound = i >= n_outbound
+        node.add_peer(PeerState(pid, "honest", 0.0, is_inbound=is_inbound))
         for ev in behavior.generate_events(**gen_kwargs):
             loop.schedule(ev)
 
@@ -886,7 +970,7 @@ def _create_peers_and_events(
             pid = f"{btype}_{i}"
             behavior = cls(pid, random.Random(rng.randint(0, 2**32)), **bkwargs)
             behaviors[pid] = behavior
-            node.add_peer(PeerState(pid, btype, 0.0))
+            node.add_peer(PeerState(pid, btype, 0.0, is_inbound=True))
             for ev in behavior.generate_events(**gen_kwargs):
                 loop.schedule(ev)
 
@@ -942,7 +1026,9 @@ def _dispatch_event(
         node.handle_saturation_check(event.data["tx_hash"], event.t)
 
     elif event.kind == "inbound_request":
-        node.handle_inbound_request(event.data["peer_id"], event.t)
+        node.handle_inbound_request(
+            event.data["peer_id"], event.data.get("columns", []), event.t,
+        )
 
     elif event.kind == "block":
         includable = [
@@ -975,8 +1061,18 @@ def _compile_results(node: Node) -> SimulationResult:
             )
             if entry["reason"] == "h4_random_col_failure":
                 result.h4_disconnects += 1
+            elif entry["reason"] == "h5_request_ratio":
+                result.h5_disconnects += 1
             if behavior == "honest":
                 result.false_positives += 1
+
+    for peer in node.peers.values():
+        beh = peer.behavior
+        result.peer_counts[beh] = result.peer_counts.get(beh, 0) + 1
+        bw = result.bandwidth_by_behavior.setdefault(beh, {"in": 0, "out": 0})
+        bw["in"] += peer.bytes_in
+        bw["out"] += peer.bytes_out
+
     result.pool_occupancy.append((0.0, node.pool.count))
     return result
 

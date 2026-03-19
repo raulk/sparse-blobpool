@@ -104,6 +104,20 @@ class TestPeerState:
         peer = PeerState(peer_id="p1", behavior="honest", connected_at=0.0)
         assert peer.provider_rate() == 0.0
 
+    def test_is_inbound_default(self):
+        peer = PeerState(peer_id="p1", behavior="honest", connected_at=0.0)
+        assert peer.is_inbound is True
+
+    def test_request_tracking_fields(self):
+        peer = PeerState(peer_id="p1", behavior="honest", connected_at=0.0)
+        assert peer.requests_received == 0
+        assert peer.requests_sent_to == 0
+
+    def test_bandwidth_fields_default_zero(self):
+        peer = PeerState(peer_id="p1", behavior="honest", connected_at=0.0)
+        assert peer.bytes_in == 0
+        assert peer.bytes_out == 0
+
 
 # ---------------------------------------------------------------------------
 # Task 4: Transaction state and blobpool store
@@ -168,14 +182,17 @@ class TestTxState:
 
 
 class TestPeerBehaviors:
-    def test_honest_peer_generates_announcements(self):
+    def test_honest_peer_generates_announcements_and_requests(self):
         rng = random.Random(42)
         peer = HonestBehavior(peer_id="h1", rng=rng)
         events = peer.generate_events(t_start=0.0, t_end=10.0, tx_rate=1.0)
         assert len(events) > 0
-        assert all(e.kind == "announce" for e in events)
-        provider_count = sum(1 for e in events if e.data["cell_mask"] == ALL_ONES)
-        assert 0 <= provider_count <= len(events)
+        announces = [e for e in events if e.kind == "announce"]
+        requests = [e for e in events if e.kind == "inbound_request"]
+        assert len(announces) > 0
+        assert len(requests) == len(announces)
+        provider_count = sum(1 for e in announces if e.data["cell_mask"] == ALL_ONES)
+        assert 0 <= provider_count <= len(announces)
 
     def test_spammer_generates_below_fee(self):
         rng = random.Random(42)
@@ -296,6 +313,93 @@ class TestNodeCellRequest:
         assert len(columns) == CELLS_PER_BLOB
 
 
+class TestNodeInboundRequest:
+    def test_request_counted(self):
+        cfg = HeuristicConfig()
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "non_announcer", 0.0))
+        node.handle_inbound_request("p1", [0, 1, 2], t=10.0)
+        assert node.peers["p1"].requests_received == 1
+
+    def test_request_accumulates_bandwidth(self):
+        cfg = HeuristicConfig()
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "non_announcer", 0.0))
+        node.handle_inbound_request("p1", [0, 1, 2, 3], t=10.0)
+        assert node.peers["p1"].bytes_in > 0
+        assert node.peers["p1"].bytes_out > 0
+
+    def test_high_request_ratio_disconnects(self):
+        cfg = HeuristicConfig(max_request_to_announce_ratio=2.0)
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "non_announcer", 0.0))
+        peer = node.peers["p1"]
+        peer.announcements_made = 1
+        for i in range(3):
+            node.handle_inbound_request("p1", [0], t=61.0 + i)
+        assert peer.disconnected
+        assert peer.disconnect_reason == "h5_request_ratio"
+
+    def test_request_ratio_not_checked_before_warmup(self):
+        """Peers connected < 60s are not checked for request ratio."""
+        cfg = HeuristicConfig(max_request_to_announce_ratio=2.0)
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("p1", "non_announcer", 0.0))
+        peer = node.peers["p1"]
+        peer.announcements_made = 1
+        for i in range(5):
+            node.handle_inbound_request("p1", [0], t=30.0 + i)
+        assert not peer.disconnected
+
+
+class TestNodeScoring:
+    def test_inbound_peers_scored_lower(self):
+        cfg = HeuristicConfig(inbound_score_discount=0.15)
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("inbound", "honest", 0.0, is_inbound=True))
+        node.add_peer(PeerState("outbound", "honest", 0.0, is_inbound=False))
+        for pid in ("inbound", "outbound"):
+            p = node.peers[pid]
+            p.announcements_made = 10
+            p.included_contributions = 5
+            p.provider_announcements = 2
+            p.sampler_announcements = 8
+        node.score_peers(t=300.0)
+        assert node.peers["outbound"].score > node.peers["inbound"].score
+
+    def test_provider_rate_deviation_penalized(self):
+        cfg = HeuristicConfig(provider_rate_tolerance=0.3)
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("normal", "honest", 0.0, is_inbound=False))
+        node.add_peer(PeerState("always_prov", "honest", 0.0, is_inbound=False))
+        for pid in ("normal", "always_prov"):
+            p = node.peers[pid]
+            p.announcements_made = 10
+            p.included_contributions = 5
+        node.peers["normal"].provider_announcements = 2
+        node.peers["normal"].sampler_announcements = 8
+        node.peers["always_prov"].provider_announcements = 10
+        node.peers["always_prov"].sampler_announcements = 0
+        node.score_peers(t=300.0)
+        assert node.peers["normal"].score > node.peers["always_prov"].score
+
+    def test_request_ratio_penalty_applied(self):
+        cfg = HeuristicConfig(max_request_to_announce_ratio=5.0)
+        node = Node(cfg, seed=42)
+        node.add_peer(PeerState("low_req", "honest", 0.0, is_inbound=False))
+        node.add_peer(PeerState("high_req", "honest", 0.0, is_inbound=False))
+        for pid in ("low_req", "high_req"):
+            p = node.peers[pid]
+            p.announcements_made = 10
+            p.included_contributions = 5
+            p.provider_announcements = 2
+            p.sampler_announcements = 8
+        node.peers["low_req"].requests_received = 1
+        node.peers["high_req"].requests_received = 50
+        node.score_peers(t=300.0)
+        assert node.peers["low_req"].score > node.peers["high_req"].score
+
+
 # ---------------------------------------------------------------------------
 # Task 7: Simulation runner
 # ---------------------------------------------------------------------------
@@ -402,6 +506,9 @@ class TestFullIntegration:
         assert result.disconnects_by_behavior.get("spoofer", 0) > 0, (
             "H4 should disconnect spoofers"
         )
+        assert result.disconnects_by_behavior.get("non_announcer", 0) > 0, (
+            "H5 should disconnect non-announcers via request ratio"
+        )
 
     def test_results_reproducible(self):
         scenario = Scenario(
@@ -414,3 +521,38 @@ class TestFullIntegration:
         r2 = run_simulation(HeuristicConfig(), scenario, seed=99)
         assert r1.total_accepted == r2.total_accepted
         assert r1.h4_disconnects == r2.h4_disconnects
+
+    def test_inbound_outbound_split(self):
+        scenario = Scenario(n_honest=50, attackers=[], inbound_ratio=0.68)
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        n_outbound = round(50 * (1 - 0.68))
+        n_inbound = 50 - n_outbound
+        inbound_peers = [
+            e for e in result.log
+            if e["event"] == "accept"
+        ]
+        # Verify through the node's peer state (re-run to inspect)
+        from heuristic_sim.blobpool_sim import _create_peers_and_events, EventLoop
+        import random as stdlib_random
+        from heuristic_sim.blobpool_sim import Node as N
+        rng = stdlib_random.Random(42)
+        node = N(HeuristicConfig(), seed=rng.randint(0, 2**32))
+        loop = EventLoop()
+        _create_peers_and_events(scenario, HeuristicConfig(), node, loop, rng)
+        actual_inbound = sum(1 for p in node.peers.values() if p.is_inbound)
+        actual_outbound = sum(1 for p in node.peers.values() if not p.is_inbound)
+        assert actual_inbound == n_inbound
+        assert actual_outbound == n_outbound
+
+    def test_bandwidth_tracked(self):
+        scenario = Scenario(
+            n_honest=10,
+            attackers=[(2, "non_announcer", {})],
+            tx_arrival_rate=1.0,
+            t_end=120.0,
+        )
+        result = run_simulation(HeuristicConfig(), scenario, seed=42)
+        assert "honest" in result.bandwidth_by_behavior
+        honest_bw = result.bandwidth_by_behavior["honest"]
+        assert honest_bw["in"] > 0
+        assert honest_bw["out"] > 0

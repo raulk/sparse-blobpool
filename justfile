@@ -80,3 +80,11 @@ sweep:
 # Run parameter sweep for a specific param
 sweep-param param:
     uv run python -m heuristic_sim.sweep --param {{param}}
+
+# Run simulation with all 6 attacks and print summary table
+sim seed="42" t_end="300":
+    uv run python -m heuristic_sim.sim --seed {{seed}} --t-end {{t_end}}
+
+# Describe attack profiles, heuristics, and default config
+describe:
+    uv run python -m heuristic_sim.describe
