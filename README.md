@@ -1,26 +1,13 @@
-# Sparse Blobpool Simulator
+# Sparse blobpool simulator
 
-A discrete event simulator for [EIP-8070](https://github.com/ethereum/EIPs/pull/8070) sparse blobpool protocol, modeling blob transaction propagation in Ethereum's peer-to-peer network.
+EIP-8070 replaces full-blob propagation with a sparse protocol: 15% of nodes store full blobs (providers), while the rest store only their custody columns plus noise-sampled extras. This dramatically cuts bandwidth, but introduces new failure modes. A withholding provider can degrade data availability. A spam flood can pollute mempools. A selective signaler can monopolize a victim's view of specific senders.
 
-## Overview
-
-The sparse blobpool protocol reduces bandwidth requirements for blob propagation by having nodes probabilistically act as either **providers** (storing full blobs) or **samplers** (storing only custody-aligned cells). This simulator validates protocol correctness and measures performance under various network conditions and attack scenarios.
-
-**Key features:**
-
-- Discrete event simulation with deterministic replay
-- Realistic network latency with CoDel queue modeling
-- Geographic region-based peer connections (NA, EU, AS)
-- Attack scenario modeling (spam, withholding, targeted poisoning)
-- Continuous fuzzing with anomaly detection
-- Real-time monitoring dashboard
+This simulator exists to find those failure modes before mainnet does. It operates at two levels: a full network simulation with thousands of nodes, realistic latency, and CoDel queuing; and a single-node heuristic tuner that isolates detection logic against six adversary profiles.
 
 ## Requirements
 
 - Python 3.14+
 - [uv](https://docs.astral.sh/uv/) package manager
-
-## Installation
 
 ```bash
 git clone https://github.com/raulk/sparse-blobpool.git
@@ -28,234 +15,115 @@ cd sparse-blobpool
 uv sync
 ```
 
-## Quick start
+## Two simulators, one protocol
 
-### Run the fuzzer
+### Network simulator (`sparse_blobpool/`)
+
+The full network simulator models thousands of nodes communicating via eth/71 messages over a topology with geographic latency and CoDel queue management. Execution is single-threaded, deterministic, and reproducible via seeded RNG.
+
+Nodes probabilistically adopt provider or sampler roles per transaction. Providers fetch the full blob; samplers fetch custody columns plus random extras. The simulator tracks bandwidth, propagation latency, provider ratios, reconstruction success rates, and false availability.
+
+Three attack scenarios run adversary actors within the network: spam floods (T1.1/T1.2), selective column withholding (T2.1), and targeted availability poisoning (T4.2). A continuous fuzzer generates randomized configurations and flags anomalies across thousands of runs.
 
 ```bash
-# Run 100 randomized simulations
+# Run a baseline scenario (2000 nodes, 60s)
+uv run python -m sparse_blobpool.scenarios.baseline
+
+# Run 100 randomized fuzzer simulations
 uv run fuzz --max-runs 100 --duration-slots 5
 
 # With live monitoring dashboard
 uv run fuzz --serve --max-runs 100
-
-# Replay a specific run by seed
-uv run fuzz --replay 478163327
 ```
 
-The fuzzer generates randomized configurations, runs simulations, and flags anomalies. Results are logged to `fuzzer_output/runs.ndjson` with detailed traces for flagged runs.
+### Heuristic simulator (`heuristic_sim/`)
 
-### Run a baseline scenario
+The heuristic simulator isolates a single node's decision-making against a configurable peer mesh. Instead of modeling network propagation, it models what the node sees: announcement streams from honest and adversarial peers, cell request/response cycles, and block inclusion events.
+
+Seven peer behavior generators drive the simulation. Honest peers announce transactions at realistic rates and serve all requested cells. Six adversary types implement distinct attack strategies: pool spam (A.1), data withholding (A.2), data spoofing (A.3), bandwidth leeching (A.4), availability starvation (A.5), and selective signaling (A.6).
+
+**Five detection heuristics defend the node.** H1 rejects transactions below the includability fee threshold. H2 evicts transactions that lack independent corroboration after a timeout. H3 adds random probe columns to cell requests, feeding data to H4. H4 disconnects peers whose random column failure rate exceeds a threshold. H5 disconnects peers whose inbound request rate far exceeds their announcement contribution. A composite peer scoring system synthesizes all signals.
+
+The simulator has 22 tunable parameters. A parameter sweep tool tests sensitivity across any of them; a CLI runner exercises all six attacks simultaneously; a Jupyter notebook provides interactive exploration with matplotlib visualizations.
 
 ```bash
-uv run python -m sparse_blobpool.scenarios.baseline
-```
+# Run all 6 attacks, print summary table
+just sim
 
-Runs a 60-second simulation with 2000 nodes and reports bandwidth usage, propagation times, and provider ratios.
+# Sweep a single parameter
+just sweep-param saturation_timeout
 
-### Python API
+# Sweep all 10 default parameter ranges
+just sweep
 
-```python
-from sparse_blobpool.config import SimulationConfig
-from sparse_blobpool.core.simulator import Simulator
-
-config = SimulationConfig(
-    node_count=500,
-    mesh_degree=30,
-    provider_probability=0.15,
-    duration=30.0,
-)
-sim = Simulator.build(config)
-
-for _ in range(10):
-    sim.broadcast_transaction()
-
-sim.block_producer.start()
-sim.run(30.0)
-
-metrics = sim.finalize_metrics()
-print(f"Bandwidth per blob: {metrics.bandwidth_per_blob / 1024:.1f} KB")
-print(f"Provider ratio: {metrics.observed_provider_ratio:.3f}")
-```
-
-## Attack scenarios
-
-The simulator includes adversary implementations for protocol security analysis:
-
-### Spam attack (T1.1/T1.2)
-
-Flood the network with garbage transactions:
-
-```python
-from sparse_blobpool.scenarios import run_spam_scenario, SpamScenarioConfig
-
-config = SpamScenarioConfig(
-    spam_rate=50.0,           # 50 txs/second
-    valid_headers=True,       # Valid structure, unavailable data
-    num_attacker_nodes=2,
-    target_fraction=0.5,
-)
-sim = run_spam_scenario(attack_config=config, run_duration=30.0)
-```
-
-### Withholding attack (T2.1)
-
-Serve custody cells but withhold reconstruction data:
-
-```python
-from sparse_blobpool.scenarios import run_withholding_scenario, WithholdingScenarioConfig
-
-config = WithholdingScenarioConfig(
-    columns_to_serve=frozenset(range(32)),  # Only first 32 columns
-    attacker_fraction=0.1,
-)
-sim = run_withholding_scenario(attack_config=config, run_duration=30.0)
-```
-
-### Targeted poisoning attack (T4.2)
-
-Signal transaction availability only to victim nodes:
-
-```python
-from sparse_blobpool.scenarios import run_poisoning_scenario, PoisoningScenarioConfig
-
-config = PoisoningScenarioConfig(
-    num_victims=3,
-    nonce_chain_length=16,
-    injection_interval=0.1,
-)
-sim = run_poisoning_scenario(attack_config=config, run_duration=30.0)
+# Print the full attack/role/heuristic reference guide
+just describe
 ```
 
 ## Fuzzer
 
-The fuzzer runs continuous randomized testing with configurable parameter ranges and anomaly detection.
+The fuzzer runs continuous randomized testing. Each run generates a random configuration within defined parameter ranges (node count 8,000-15,000, provider observation timeout 12-36s, pool size 512MiB-1GiB, and others), executes a simulation, and checks results against anomaly thresholds.
 
-### CLI options
+| Threshold | Default | Flags when |
+|-----------|---------|------------|
+| `max_p99_propagation_time` | 30.0s | p99 latency exceeds limit |
+| `min_reconstruction_success_rate` | 0.95 | Reconstruction drops below 95% |
+| `max_false_availability_rate` | 0.05 | False availability exceeds 5% |
+| `min_local_availability_met` | 0.90 | Local availability drops below 90% |
 
-| Option | Description |
-|--------|-------------|
-| `--max-runs N` | Maximum runs (default: unlimited) |
-| `--duration-slots N` | Duration in slots (1 slot = 12s) |
-| `--seed N` | Master seed for reproducibility |
-| `--replay SEED` | Replay a specific run |
-| `--config FILE` | TOML configuration file |
-| `--trace-all` | Save traces for all runs |
-| `--serve` | Enable monitoring dashboard |
-| `--port N` | Dashboard port (default: 8000) |
-
-### Anomaly detection
-
-The fuzzer flags runs where metrics fall outside expected ranges:
-
-| Threshold | Default | Description |
-|-----------|---------|-------------|
-| `max_p99_propagation_time` | 30.0s | Maximum p99 latency |
-| `min_reconstruction_success_rate` | 0.95 | Minimum reconstruction rate |
-| `max_false_availability_rate` | 0.05 | Maximum false availability |
-| `min_local_availability_met` | 0.90 | Minimum local availability |
-
-### Output
-
-```
-[memorable-run-id] BASELINE seed=12345 ... OK (1.2s)
-[another-run-id] BASELINE seed=67890 ... ATTENTION(low_local_availability) (2.3s)
-```
-
-Flagged runs save `config.json` and `metrics.json` to `fuzzer_output/<run-id>/`.
+Flagged runs save full config and metrics to `fuzzer_output/<run-id>/`. Run names are memorable (generated via coolname) for easy reference.
 
 ## Monitoring dashboard
 
-Real-time web UI for monitoring fuzzer progress.
+A React + TypeScript dashboard streams fuzzer progress over WebSocket.
 
 ```bash
-# Install serve dependencies
 uv sync --extra serve
-
-# Run with dashboard
 uv run fuzz --serve --max-runs 100
+# Access at http://localhost:8000
 ```
 
-Access at http://localhost:8000
-
-**Features:**
-- Live run status via WebSocket
-- Success/flagged/error distribution charts
-- Anomaly frequency breakdown
-- Run detail drawer with parameters, metrics, and trace data
-
-For frontend development:
-
-```bash
-cd web && pnpm install && pnpm dev
-```
-
-## Configuration
-
-### Simulation parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `node_count` | 2000 | Number of nodes |
-| `mesh_degree` | 50 | Peer connections per node |
-| `provider_probability` | 0.15 | Provider role probability |
-| `custody_columns` | 8 | Columns per node for custody |
-| `blobpool_max_bytes` | 256MB | Maximum blobpool size |
-| `max_txs_per_sender` | 16 | Per-sender transaction limit |
-| `duration` | 60.0 | Simulation duration (seconds) |
-
-### Network latency
-
-| Route | Base latency | Jitter |
-|-------|--------------|--------|
-| NA ↔ NA | 20ms | 10% |
-| EU ↔ EU | 15ms | 10% |
-| AS ↔ AS | 25ms | 10% |
-| NA ↔ EU | 45ms | 15% |
-| NA ↔ AS | 90ms | 20% |
-| EU ↔ AS | 75ms | 15% |
-
-## Metrics
-
-The simulator collects:
-
-- **Bandwidth**: Total bytes, per-blob average, reduction vs full propagation
-- **Propagation**: Time to network coverage, success rate
-- **Roles**: Provider vs sampler distribution
-- **Reconstruction**: Success rate for blob reconstruction
-- **Attack metrics**: Spam amplification, victim pollution
-
-```python
-metrics = sim.finalize_metrics()
-print(json.dumps(metrics.to_dict(), indent=2))
-```
+The dashboard shows live run status, success/flagged/error distribution, anomaly frequency breakdown, and per-run detail drawers with parameters, metrics, and attack impact visualization.
 
 ## Architecture
 
 ```
 sparse_blobpool/
-├── core/           # Simulator, Actor, Network, BlockProducer
-├── actors/         # Node implementation
-├── protocol/       # eth/71 messages, blobpool state
-├── p2p/            # Topology generation
-├── metrics/        # MetricsCollector, SimulationResults
-├── scenarios/      # Runnable scenarios
-│   ├── baseline.py
-│   └── attacks/    # Spam, withholding, poisoning
-└── fuzzer/         # Autopilot + monitoring server
-tests/              # 230+ tests with hypothesis
-web/                # React frontend
+├── core/           # Simulator engine, Actor base, Network with CoDel
+├── actors/         # Node (eth/71), BlockProducer, adversaries
+├── protocol/       # Messages, commands, constants
+├── pool/           # Blobpool with RBF, eviction, per-sender limits
+├── metrics/        # Bandwidth, propagation, reconstruction, victim tracking
+├── scenarios/      # Baseline + attack scenarios (spam, withholding, poisoning)
+└── fuzzer/         # Autopilot, config generation, anomaly detection, server
+
+heuristic_sim/
+├── config.py       # 22 tunable parameters, presets, scenario definition
+├── events.py       # Discrete event loop (min-heap)
+├── peers.py        # PeerState + 7 behavior generators
+├── node.py         # H1-H5 heuristics, TokenBucket rate limiter, peer scoring
+├── pool.py         # TxStore with fee/age/hybrid eviction
+├── metrics.py      # SimulationResult with summary table
+├── runner.py       # Simulation wiring and event dispatch
+├── sim.py          # CLI runner
+├── sweep.py        # Parameter sweep tool
+└── describe.py     # Reference guide
+
+tests/              # 278 tests with hypothesis property-based testing
+web/                # React + TypeScript monitoring dashboard
 ```
 
-The simulator uses an actor model where all components communicate via messages routed through a Network actor that adds realistic latency. Execution is single-threaded and deterministic using a min-heap priority queue.
+The network simulator uses an actor model where components communicate via messages routed through a Network actor that adds geographic latency, transmission delay, and CoDel backoff. The heuristic simulator is self-contained: its own event loop, its own pool, no dependency on the network simulator's infrastructure. Both are single-threaded and deterministic.
 
 ## Development
 
 ```bash
-uv run pytest                           # Run tests
-uv run pytest --cov=sparse_blobpool     # With coverage
-uv run ruff format .                    # Format
-uv run ruff check . --fix               # Lint
+just test              # Run all tests
+just test-heuristic    # Run heuristic sim tests only
+just lint              # Format and lint
+just sim               # Run heuristic sim with all 6 attacks
+just sweep             # Parameter sweep (all params)
+just describe          # Print attack/heuristic reference
 ```
 
 ## License
