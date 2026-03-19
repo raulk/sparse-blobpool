@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from hashlib import sha256
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from heuristic_sim.config import (
     ANNOUNCE_MSG_BYTES,
@@ -16,8 +16,10 @@ from heuristic_sim.config import (
     mask_to_columns,
 )
 from heuristic_sim.events import Event
-from heuristic_sim.peers import PeerState
 from heuristic_sim.pool import TxEntry, TxStore
+
+if TYPE_CHECKING:
+    from heuristic_sim.peers import PeerState
 
 
 class TokenBucket:
@@ -71,10 +73,15 @@ class Node:
             peer.disconnected = True
             peer.disconnect_reason = reason
             peer.disconnect_time = t
-            self.log.append({
-                "t": t, "event": "disconnect", "peer_id": peer_id,
-                "reason": reason, "behavior": peer.behavior,
-            })
+            self.log.append(
+                {
+                    "t": t,
+                    "event": "disconnect",
+                    "peer_id": peer_id,
+                    "reason": reason,
+                    "behavior": peer.behavior,
+                }
+            )
 
     def _determine_role(self, tx_hash: str) -> Role:
         h = sha256(f"role:{tx_hash}:{self.rng.random()}".encode()).digest()
@@ -91,8 +98,16 @@ class Node:
         return custody + extra
 
     def handle_announce(
-        self, peer_id: str, tx_hash: str, sender: str, nonce: int,
-        fee: float, cell_mask: int, is_provider: bool, exclusive: bool, t: float,
+        self,
+        peer_id: str,
+        tx_hash: str,
+        sender: str,
+        nonce: int,
+        fee: float,
+        cell_mask: int,
+        is_provider: bool,
+        exclusive: bool,
+        t: float,
     ) -> list[Event]:
         follow_up: list[Event] = []
         peer = self.peers.get(peer_id)
@@ -101,10 +116,14 @@ class Node:
 
         # Rate limiting: reject if announcement rate too high
         if not self._rate_limiter.consume(t):
-            self.log.append({
-                "t": t, "event": "reject_rate_limit", "tx_hash": tx_hash,
-                "peer_id": peer_id,
-            })
+            self.log.append(
+                {
+                    "t": t,
+                    "event": "reject_rate_limit",
+                    "tx_hash": tx_hash,
+                    "peer_id": peer_id,
+                }
+            )
             return follow_up
 
         if is_provider:
@@ -116,10 +135,15 @@ class Node:
 
         # H1: reject txs that can't be included at the current blob base fee
         if fee < self.config.blob_base_fee * self.config.includability_discount:
-            self.log.append({
-                "t": t, "event": "reject_h1", "tx_hash": tx_hash,
-                "peer_id": peer_id, "fee": fee,
-            })
+            self.log.append(
+                {
+                    "t": t,
+                    "event": "reject_h1",
+                    "tx_hash": tx_hash,
+                    "peer_id": peer_id,
+                    "fee": fee,
+                }
+            )
             return follow_up
 
         existing = self.pool.get(tx_hash)
@@ -129,8 +153,14 @@ class Node:
 
         role = self._determine_role(tx_hash)
         tx = TxEntry(
-            tx_hash=tx_hash, sender=sender, nonce=nonce, fee=fee,
-            first_seen=t, role=role, cell_mask=0, announcers={peer_id},
+            tx_hash=tx_hash,
+            sender=sender,
+            nonce=nonce,
+            fee=fee,
+            first_seen=t,
+            role=role,
+            cell_mask=0,
+            announcers={peer_id},
         )
         evicted = self.pool.add(tx)
         if not self.pool.contains(tx_hash):
@@ -142,36 +172,50 @@ class Node:
         self.pool_snapshots.append((t, self.pool.count))
 
         # H2: verify the tx is independently announced by enough peers
-        follow_up.append(Event(
-            t=t + self.config.saturation_timeout,
-            kind="saturation_check",
-            data={"tx_hash": tx_hash},
-        ))
+        follow_up.append(
+            Event(
+                t=t + self.config.saturation_timeout,
+                kind="saturation_check",
+                data={"tx_hash": tx_hash},
+            )
+        )
 
         # H3: request cells with C_extra noise columns to detect withholders
         request_cols = self.compute_request_columns(is_provider=(role == Role.PROVIDER))
         peer.requests_sent_to += 1
         peer.bytes_out += REQUEST_MSG_OVERHEAD + len(request_cols) * 2
-        follow_up.append(Event(
-            t=t + 0.1,
-            kind="request_cells",
-            data={
-                "peer_id": peer_id, "tx_hash": tx_hash,
-                "columns": request_cols,
-                "custody_columns": mask_to_columns(self.custody_mask),
-            },
-        ))
+        follow_up.append(
+            Event(
+                t=t + 0.1,
+                kind="request_cells",
+                data={
+                    "peer_id": peer_id,
+                    "tx_hash": tx_hash,
+                    "columns": request_cols,
+                    "custody_columns": mask_to_columns(self.custody_mask),
+                },
+            )
+        )
 
-        self.log.append({
-            "t": t, "event": "accept", "tx_hash": tx_hash,
-            "role": role.name, "peer_id": peer_id,
-        })
+        self.log.append(
+            {
+                "t": t,
+                "event": "accept",
+                "tx_hash": tx_hash,
+                "role": role.name,
+                "peer_id": peer_id,
+            }
+        )
         return follow_up
 
     def handle_cells_response(
-        self, peer_id: str, tx_hash: str,
-        served: list[int], failed: list[int],
-        custody_columns: list[int], t: float,
+        self,
+        peer_id: str,
+        tx_hash: str,
+        served: list[int],
+        failed: list[int],
+        custody_columns: list[int],
+        t: float,
     ) -> list[Event]:
         follow_up: list[Event] = []
         peer = self.peers.get(peer_id)
@@ -209,20 +253,26 @@ class Node:
         if tx is None:
             return []
         independent = {
-            p for p in tx.announcers
-            if p in self.peers and not self.peers[p].disconnected
+            p for p in tx.announcers if p in self.peers and not self.peers[p].disconnected
         }
         if len(independent) < self.config.min_independent_peers:
             self.pool.remove(tx_hash)
             self.pool_snapshots.append((t, self.pool.count))
-            self.log.append({
-                "t": t, "event": "evict_h2_saturation",
-                "tx_hash": tx_hash, "announcers": len(independent),
-            })
+            self.log.append(
+                {
+                    "t": t,
+                    "event": "evict_h2_saturation",
+                    "tx_hash": tx_hash,
+                    "announcers": len(independent),
+                }
+            )
         return []
 
     def handle_inbound_request(
-        self, peer_id: str, columns: list[int], t: float,
+        self,
+        peer_id: str,
+        columns: list[int],
+        t: float,
     ) -> list[Event]:
         peer = self.peers.get(peer_id)
         if peer is None or peer.disconnected:
@@ -232,10 +282,14 @@ class Node:
         peer.bytes_in += REQUEST_MSG_OVERHEAD + len(columns) * 2
         peer.bytes_out += len(columns) * CELL_BYTES
 
-        self.log.append({
-            "t": t, "event": "inbound_request_tracked",
-            "peer_id": peer_id, "n_columns": len(columns),
-        })
+        self.log.append(
+            {
+                "t": t,
+                "event": "inbound_request_tracked",
+                "peer_id": peer_id,
+                "n_columns": len(columns),
+            }
+        )
 
         # H5: disconnect peers with excessive request-to-announcement ratio
         total_ann = max(peer.announcements_made, 1)
@@ -269,11 +323,15 @@ class Node:
             duration_score = min(duration / 300.0, 1.0)
             contribution_score = min(peer.included_contributions / 10.0, 1.0)
             failure_penalty = peer.random_column_failure_rate()
-            announcer_penalty = 0.0 if peer.announcements_made > 0 else (0.3 if duration > 60.0 else 0.0)
+            announcer_penalty = (
+                0.0 if peer.announcements_made > 0 else (0.3 if duration > 60.0 else 0.0)
+            )
 
             total_ann = max(peer.announcements_made, 1)
             request_ratio = peer.requests_received / total_ann
-            request_ratio_penalty = min(request_ratio / self.config.max_request_to_announce_ratio, 1.0)
+            request_ratio_penalty = min(
+                request_ratio / self.config.max_request_to_announce_ratio, 1.0
+            )
 
             expected_p = self.config.provider_probability
             actual_p = peer.provider_rate()

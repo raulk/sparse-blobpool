@@ -115,12 +115,14 @@ class AttackScenarioConfig:
     enable_attacks: bool = True
     attack_probability: float = 0.3  # Probability of including an attack in a run
     # Relative weights for each attack type (normalized at runtime)
-    attack_weights: dict[str, float] = field(default_factory=lambda: {
-        "spam_t1_1": 0.25,        # Valid headers, unavailable data
-        "spam_t1_2": 0.25,        # Invalid headers
-        "withholding": 0.25,      # Column withholding
-        "poisoning": 0.25,        # Targeted blobpool poisoning
-    })
+    attack_weights: dict[str, float] = field(
+        default_factory=lambda: {
+            "spam_t1_1": 0.25,  # Valid headers, unavailable data
+            "spam_t1_2": 0.25,  # Invalid headers
+            "withholding": 0.25,  # Column withholding
+            "poisoning": 0.25,  # Targeted blobpool poisoning
+        }
+    )
 
 
 @dataclass
@@ -193,7 +195,9 @@ class FuzzerConfig:
             attack_config_kwargs["attack_weights"] = attack_data["attack_weights"]
 
         attack_config = (
-            AttackScenarioConfig(**attack_config_kwargs) if attack_config_kwargs else AttackScenarioConfig()
+            AttackScenarioConfig(**attack_config_kwargs)
+            if attack_config_kwargs
+            else AttackScenarioConfig()
         )
 
         from pathlib import Path as PathClass

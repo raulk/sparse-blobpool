@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from random import Random
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from sparse_blobpool.actors.adversaries.victim_selection import (
     VictimSelectionConfig,
@@ -18,6 +18,8 @@ from sparse_blobpool.actors.adversaries.victim_selection import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sparse_blobpool.actors.adversaries.victim_selection import VictimProfile
     from sparse_blobpool.config import SimulationConfig
     from sparse_blobpool.core.simulator import Simulator
@@ -177,8 +179,16 @@ class AttackRegistry:
             selected_scenario = self.scenarios[-1]  # Fallback to last scenario
 
         # Generate specific parameters within ranges
-        victim_count = rng.randint(*selected_scenario.victim_count_range) if selected_scenario.victim_count_range[1] > 0 else 0
-        attacker_count = rng.randint(*selected_scenario.attacker_count_range) if selected_scenario.attacker_count_range[1] > 0 else 0
+        victim_count = (
+            rng.randint(*selected_scenario.victim_count_range)
+            if selected_scenario.victim_count_range[1] > 0
+            else 0
+        )
+        attacker_count = (
+            rng.randint(*selected_scenario.attacker_count_range)
+            if selected_scenario.attacker_count_range[1] > 0
+            else 0
+        )
 
         # Select victims if needed
         victim_profile = None
@@ -264,6 +274,7 @@ def create_attack_executor(
     Returns:
         Function that executes the attack on a simulator.
     """
+
     def executor(sim: Simulator) -> None:
         match attack_selection.attack_type:
             case AttackType.NONE:
@@ -275,8 +286,7 @@ def create_attack_executor(
 
                 # Select attacker nodes
                 attacker_nodes = sim.rng.sample(
-                    [n.id for n in sim.nodes],
-                    min(attack_selection.attacker_count, len(sim.nodes))
+                    [n.id for n in sim.nodes], min(attack_selection.attacker_count, len(sim.nodes))
                 )
 
                 victim_config = None
@@ -314,8 +324,7 @@ def create_attack_executor(
                 )
 
                 attacker_nodes = sim.rng.sample(
-                    [n.id for n in sim.nodes],
-                    min(attack_selection.attacker_count, len(sim.nodes))
+                    [n.id for n in sim.nodes], min(attack_selection.attacker_count, len(sim.nodes))
                 )
 
                 victim_config = None
@@ -353,13 +362,12 @@ def create_attack_executor(
 
             case AttackType.POISONING_T4_2:
                 from sparse_blobpool.scenarios.attacks.poisoning import (
-                    TargetedPoisoningAdversary,
                     PoisoningScenarioConfig,
+                    TargetedPoisoningAdversary,
                 )
 
                 attacker_nodes = sim.rng.sample(
-                    [n.id for n in sim.nodes],
-                    min(attack_selection.attacker_count, len(sim.nodes))
+                    [n.id for n in sim.nodes], min(attack_selection.attacker_count, len(sim.nodes))
                 )
 
                 victim_config = None
@@ -372,7 +380,9 @@ def create_attack_executor(
 
                 poisoning_config = PoisoningScenarioConfig(
                     nonce_chain_length=attack_selection.attack_params.get("nonce_chain_length", 16),  # type: ignore
-                    injection_interval=attack_selection.attack_params.get("injection_interval", 0.1),  # type: ignore
+                    injection_interval=attack_selection.attack_params.get(
+                        "injection_interval", 0.1
+                    ),  # type: ignore
                     attack_start_time=0.0,  # Start attacks immediately
                     victim_selection_config=victim_config,
                 )

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import random
 from collections import deque
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from heuristic_sim.config import ALL_ONES, CELLS_PER_BLOB, columns_to_mask, mask_to_columns
 from heuristic_sim.events import Event
+
+if TYPE_CHECKING:
+    import random
 
 
 @dataclass
@@ -57,7 +59,9 @@ class PeerBehavior:
         raise NotImplementedError
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         raise NotImplementedError
 
@@ -93,35 +97,41 @@ class HonestBehavior(PeerBehavior):
             fee = blob_base_fee * self.rng.uniform(0.8, 3.0)
             is_provider = self.rng.random() < self.provider_prob
             cell_mask = ALL_ONES if is_provider else columns_to_mask(self.custody)
-            events.append(Event(
-                t=t,
-                kind="announce",
-                data={
-                    "tx_hash": self._make_tx_hash(sender, nonce),
-                    "sender": sender,
-                    "nonce": nonce,
-                    "fee": fee,
-                    "cell_mask": cell_mask,
-                    "is_provider": is_provider,
-                    "exclusive": False,
-                    "peer_id": self.peer_id,
-                },
-            ))
+            events.append(
+                Event(
+                    t=t,
+                    kind="announce",
+                    data={
+                        "tx_hash": self._make_tx_hash(sender, nonce),
+                        "sender": sender,
+                        "nonce": nonce,
+                        "fee": fee,
+                        "cell_mask": cell_mask,
+                        "is_provider": is_provider,
+                        "exclusive": False,
+                        "peer_id": self.peer_id,
+                    },
+                )
+            )
             n_cols = len(self.custody) + self.rng.randint(1, 4)
             requested_cols = self.rng.sample(range(CELLS_PER_BLOB), min(n_cols, CELLS_PER_BLOB))
-            events.append(Event(
-                t=t + self.rng.uniform(0.05, 0.2),
-                kind="inbound_request",
-                data={
-                    "columns": requested_cols,
-                    "peer_id": self.peer_id,
-                },
-            ))
+            events.append(
+                Event(
+                    t=t + self.rng.uniform(0.05, 0.2),
+                    kind="inbound_request",
+                    data={
+                        "columns": requested_cols,
+                        "peer_id": self.peer_id,
+                    },
+                )
+            )
             t += self.rng.expovariate(tx_rate)
         return events
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         return {"served": list(columns), "failed": []}
 
@@ -157,25 +167,29 @@ class SpammerBehavior(PeerBehavior):
                 fee = blob_base_fee * includability_discount * self.rng.uniform(0.1, 0.99)
             else:
                 fee = blob_base_fee * self.rng.uniform(0.8, 1.5)
-            events.append(Event(
-                t=t,
-                kind="announce",
-                data={
-                    "tx_hash": self._make_tx_hash(sender, nonce),
-                    "sender": sender,
-                    "nonce": nonce,
-                    "fee": fee,
-                    "cell_mask": ALL_ONES,
-                    "is_provider": True,
-                    "exclusive": False,
-                    "peer_id": self.peer_id,
-                },
-            ))
+            events.append(
+                Event(
+                    t=t,
+                    kind="announce",
+                    data={
+                        "tx_hash": self._make_tx_hash(sender, nonce),
+                        "sender": sender,
+                        "nonce": nonce,
+                        "fee": fee,
+                        "cell_mask": ALL_ONES,
+                        "is_provider": True,
+                        "exclusive": False,
+                        "peer_id": self.peer_id,
+                    },
+                )
+            )
             t += self.rng.expovariate(self.rate)
         return events
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         return {"served": [], "failed": list(columns)}
 
@@ -210,25 +224,29 @@ class WithholderBehavior(PeerBehavior):
             sender = f"sender_{self.rng.randint(0, 999)}"
             nonce = self.rng.randint(0, 15)
             fee = blob_base_fee * self.rng.uniform(0.8, 3.0)
-            events.append(Event(
-                t=t,
-                kind="announce",
-                data={
-                    "tx_hash": self._make_tx_hash(sender, nonce),
-                    "sender": sender,
-                    "nonce": nonce,
-                    "fee": fee,
-                    "cell_mask": ALL_ONES,
-                    "is_provider": True,
-                    "exclusive": False,
-                    "peer_id": self.peer_id,
-                },
-            ))
+            events.append(
+                Event(
+                    t=t,
+                    kind="announce",
+                    data={
+                        "tx_hash": self._make_tx_hash(sender, nonce),
+                        "sender": sender,
+                        "nonce": nonce,
+                        "fee": fee,
+                        "cell_mask": ALL_ONES,
+                        "is_provider": True,
+                        "exclusive": False,
+                        "peer_id": self.peer_id,
+                    },
+                )
+            )
             t += self.rng.expovariate(tx_rate)
         return events
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         custody_cols = mask_to_columns(requester_custody)
         custody_set = set(custody_cols)
@@ -272,25 +290,29 @@ class SpooferBehavior(PeerBehavior):
             sender = f"sender_{self.rng.randint(0, 999)}"
             nonce = self.rng.randint(0, 15)
             fee = blob_base_fee * self.rng.uniform(0.8, 3.0)
-            events.append(Event(
-                t=t,
-                kind="announce",
-                data={
-                    "tx_hash": self._make_tx_hash(sender, nonce),
-                    "sender": sender,
-                    "nonce": nonce,
-                    "fee": fee,
-                    "cell_mask": ALL_ONES,
-                    "is_provider": True,
-                    "exclusive": False,
-                    "peer_id": self.peer_id,
-                },
-            ))
+            events.append(
+                Event(
+                    t=t,
+                    kind="announce",
+                    data={
+                        "tx_hash": self._make_tx_hash(sender, nonce),
+                        "sender": sender,
+                        "nonce": nonce,
+                        "fee": fee,
+                        "cell_mask": ALL_ONES,
+                        "is_provider": True,
+                        "exclusive": False,
+                        "peer_id": self.peer_id,
+                    },
+                )
+            )
             t += self.rng.expovariate(tx_rate)
         return events
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         return {"served": [], "failed": list(columns)}
 
@@ -321,25 +343,29 @@ class FreeRiderBehavior(PeerBehavior):
             sender = f"sender_{self.rng.randint(0, 999)}"
             nonce = self.rng.randint(0, 15)
             fee = blob_base_fee * self.rng.uniform(0.8, 3.0)
-            events.append(Event(
-                t=t,
-                kind="announce",
-                data={
-                    "tx_hash": self._make_tx_hash(sender, nonce),
-                    "sender": sender,
-                    "nonce": nonce,
-                    "fee": fee,
-                    "cell_mask": columns_to_mask(self.custody),
-                    "is_provider": False,
-                    "exclusive": False,
-                    "peer_id": self.peer_id,
-                },
-            ))
+            events.append(
+                Event(
+                    t=t,
+                    kind="announce",
+                    data={
+                        "tx_hash": self._make_tx_hash(sender, nonce),
+                        "sender": sender,
+                        "nonce": nonce,
+                        "fee": fee,
+                        "cell_mask": columns_to_mask(self.custody),
+                        "is_provider": False,
+                        "exclusive": False,
+                        "peer_id": self.peer_id,
+                    },
+                )
+            )
             t += self.rng.expovariate(tx_rate)
         return events
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         custody_set = set(self.custody)
         served = [c for c in columns if c in custody_set]
@@ -363,21 +389,26 @@ class NonAnnouncerBehavior(PeerBehavior):
         t = t_start + self.rng.expovariate(tx_rate)
         while t < t_end:
             requested_cols = self.rng.sample(
-                range(CELLS_PER_BLOB), self.rng.randint(1, 8),
+                range(CELLS_PER_BLOB),
+                self.rng.randint(1, 8),
             )
-            events.append(Event(
-                t=t,
-                kind="inbound_request",
-                data={
-                    "columns": requested_cols,
-                    "peer_id": self.peer_id,
-                },
-            ))
+            events.append(
+                Event(
+                    t=t,
+                    kind="inbound_request",
+                    data={
+                        "columns": requested_cols,
+                        "peer_id": self.peer_id,
+                    },
+                )
+            )
             t += self.rng.expovariate(tx_rate)
         return events
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         return {"served": [], "failed": list(columns)}
 
@@ -411,25 +442,29 @@ class SelectiveSignalerBehavior(PeerBehavior):
         for s in range(self.n_senders):
             sender = f"target_sender_{s}"
             for nonce in range(self.txs_per_sender):
-                events.append(Event(
-                    t=t,
-                    kind="announce",
-                    data={
-                        "tx_hash": self._make_tx_hash(sender, nonce),
-                        "sender": sender,
-                        "nonce": nonce,
-                        "fee": 2.0,
-                        "cell_mask": ALL_ONES,
-                        "is_provider": True,
-                        "exclusive": True,
-                        "peer_id": self.peer_id,
-                    },
-                ))
+                events.append(
+                    Event(
+                        t=t,
+                        kind="announce",
+                        data={
+                            "tx_hash": self._make_tx_hash(sender, nonce),
+                            "sender": sender,
+                            "nonce": nonce,
+                            "fee": 2.0,
+                            "cell_mask": ALL_ONES,
+                            "is_provider": True,
+                            "exclusive": True,
+                            "peer_id": self.peer_id,
+                        },
+                    )
+                )
                 t += interval
         return events
 
     def respond_to_cell_request(
-        self, columns: list[int], requester_custody: int,
+        self,
+        columns: list[int],
+        requester_custody: int,
     ) -> dict[str, list[int]]:
         return {"served": list(columns), "failed": []}
 

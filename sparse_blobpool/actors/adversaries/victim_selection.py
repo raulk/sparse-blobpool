@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from random import Random
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from random import Random
+
     from sparse_blobpool.core.simulator import Simulator
     from sparse_blobpool.core.types import ActorId
 
@@ -29,7 +30,7 @@ class VictimSelectionStrategy(str, Enum):
 class VictimProfile:
     """Selected victim set with strategy metadata."""
 
-    victims: list["ActorId"]
+    victims: list[ActorId]
     strategy: VictimSelectionStrategy
     metadata: dict[str, object]
 
@@ -42,8 +43,10 @@ class VictimSelectionConfig:
     num_victims: int | None = None  # Number of victims to select
     victim_fraction: float | None = None  # Fraction of nodes to select as victims
     exclude_controlled: bool = True  # Exclude adversary's controlled nodes
-    explicit_victims: list["ActorId"] | None = None  # Use provided victims as-is
-    target_providers: bool | None = None  # For ROLE_BASED: target providers (True) or samplers (False)
+    explicit_victims: list[ActorId] | None = None  # Use provided victims as-is
+    target_providers: bool | None = (
+        None  # For ROLE_BASED: target providers (True) or samplers (False)
+    )
     edge_threshold: int = 3  # For EDGE: max degree to be considered edge node
     target_country: str | None = None  # For GEOGRAPHIC_CLUSTER: specific country to target
 
@@ -190,9 +193,7 @@ class VictimSelector:
         indices = self.rng.sample(range(len(candidates)), count)
         return [candidates[i] for i in indices]
 
-    def _select_by_degree(
-        self, candidates: list[ActorId], count: int, high: bool
-    ) -> list[ActorId]:
+    def _select_by_degree(self, candidates: list[ActorId], count: int, high: bool) -> list[ActorId]:
         """Select nodes by degree (connectivity)."""
         try:
             import networkx as nx
@@ -307,7 +308,7 @@ class VictimSelector:
             # No single country has enough nodes, use random
             return self._select_random(candidates, count)
 
-        # Select a random country
+            # Select a random country
             target_country = self.rng.choice(valid_countries)
         return self._select_random(country_nodes[target_country], count)
 
@@ -330,9 +331,9 @@ class VictimSelector:
                     degree = G.degree(node_id)
                     # Providers: high degree (>= 20 peers)
                     # Samplers: low degree (< 20 peers)
-                    if self.config.target_providers and degree >= 20:
-                        role_candidates.append(node_id)
-                    elif not self.config.target_providers and degree < 20:
+                    if (self.config.target_providers and degree >= 20) or (
+                        not self.config.target_providers and degree < 20
+                    ):
                         role_candidates.append(node_id)
 
             if len(role_candidates) < count:

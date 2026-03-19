@@ -110,9 +110,7 @@ class RunsDatabase:
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         """Get a single run by ID."""
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
             return self._row_to_dict(row) if row else None
 
     def get_runs(
@@ -156,15 +154,13 @@ class RunsDatabase:
                     "scenario_distribution": {},
                 }
 
-            success = conn.execute(
-                "SELECT COUNT(*) FROM runs WHERE status = 'success'"
-            ).fetchone()[0]
+            success = conn.execute("SELECT COUNT(*) FROM runs WHERE status = 'success'").fetchone()[
+                0
+            ]
             attention = conn.execute(
                 "SELECT COUNT(*) FROM runs WHERE status LIKE '%ATTENTION%'"
             ).fetchone()[0]
-            errors = conn.execute(
-                "SELECT COUNT(*) FROM runs WHERE status = 'error'"
-            ).fetchone()[0]
+            errors = conn.execute("SELECT COUNT(*) FROM runs WHERE status = 'error'").fetchone()[0]
 
             # Runs per minute
             time_range = conn.execute(

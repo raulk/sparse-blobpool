@@ -2,15 +2,15 @@
 """Demonstration of the complete attack system with victim selection and tracking."""
 
 import json
-from pathlib import Path
 from random import Random
 
-from sparse_blobpool.config import SimulationConfig
-from sparse_blobpool.fuzzer.config import FuzzerConfig, AttackScenarioConfig, ParameterRanges, AnomalyThresholds
 from sparse_blobpool.actors.adversaries.victim_selection import (
-    VictimSelectionStrategy,
     VictimSelectionConfig,
+    VictimSelectionStrategy,
     VictimSelector,
+)
+from sparse_blobpool.fuzzer.config import (
+    AttackScenarioConfig,
 )
 
 
@@ -101,7 +101,7 @@ def demo_attack_configuration():
             "spam_t1_2": 0.2,
             "withholding": 0.25,
             "poisoning": 0.25,
-        }
+        },
     )
 
     print("\nAttack Configuration:")
@@ -115,7 +115,7 @@ def demo_attack_configuration():
 
     # Simulate attack selection
     rng = Random(42)
-    attack_counts = {k: 0 for k in attack_config.attack_weights.keys()}
+    attack_counts = dict.fromkeys(attack_config.attack_weights.keys(), 0)
     baseline_count = 0
 
     print("\nSimulating 1000 runs:")
@@ -138,9 +138,9 @@ def demo_attack_configuration():
         else:
             baseline_count += 1
 
-    print(f"  - Baseline runs: {baseline_count} ({baseline_count/10:.1f}%)")
+    print(f"  - Baseline runs: {baseline_count} ({baseline_count / 10:.1f}%)")
     for attack_type, count in attack_counts.items():
-        print(f"  - {attack_type} runs: {count} ({count/10:.1f}%)")
+        print(f"  - {attack_type} runs: {count} ({count / 10:.1f}%)")
 
 
 def demo_metrics_structure():
@@ -180,7 +180,7 @@ def demo_metrics_structure():
             "avg_blobpool_pollution": 0.85,
             "nodes_disconnected": 1,
             "collateral_damage": 0.12,  # Impact on non-targeted nodes
-        }
+        },
     }
 
     print("\nExample Victim Metrics Structure:")
@@ -215,7 +215,7 @@ def demo_fuzzer_output_format():
                 "spam_rate": 10.0,
                 "valid_headers": True,
                 "provide_data": False,
-            }
+            },
         },
         "metrics": {
             "bandwidth_total_bytes": 512000000,
@@ -228,7 +228,7 @@ def demo_fuzzer_output_format():
         },
         "anomalies": [
             "High victim blobpool pollution: 0.85 (threshold: 0.5)",
-            "Elevated propagation p99: 2100ms (threshold: 1000ms)"
+            "Elevated propagation p99: 2100ms (threshold: 1000ms)",
         ],
         "wall_clock_seconds": 4.2,
         "simulated_seconds": 60.0,

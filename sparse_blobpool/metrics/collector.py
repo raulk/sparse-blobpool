@@ -172,9 +172,7 @@ class MetricsCollector:
     def record_withholding_detected(self) -> None:
         self.withholding_detected += 1
 
-    def record_victim_targeted(
-        self, victim_id: ActorId, attack_type: str, tx_hash: TxHash
-    ) -> None:
+    def record_victim_targeted(self, victim_id: ActorId, attack_type: str, tx_hash: TxHash) -> None:
         """Record that a victim was targeted by an attack.
 
         Args:

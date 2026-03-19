@@ -115,9 +115,7 @@ class WithholdingAdversary(Actor):
 
             # Record withholding in metrics
             for tx_hash in req.tx_hashes:
-                self.simulator.metrics.record_victim_targeted(
-                    req.sender, "withholding", tx_hash
-                )
+                self.simulator.metrics.record_victim_targeted(req.sender, "withholding", tx_hash)
 
             if self._withholding_config.delay_other_columns is not None:
                 # Delay response for non-served columns

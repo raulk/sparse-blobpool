@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from statistics import mean, median
+from statistics import mean
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -196,12 +196,13 @@ class VictimMetricsCollector:
         # Calculate per-victim metrics
         for victim_id, metrics in self.victim_metrics.items():
             # Bandwidth impact
-            metrics.bytes_received_attack = self.metrics_collector.bytes_received.get(
-                victim_id, 0
-            ) - metrics.bytes_received_normal
-            metrics.bytes_sent_attack = self.metrics_collector.bytes_sent.get(
-                victim_id, 0
-            ) - metrics.bytes_sent_normal
+            metrics.bytes_received_attack = (
+                self.metrics_collector.bytes_received.get(victim_id, 0)
+                - metrics.bytes_received_normal
+            )
+            metrics.bytes_sent_attack = (
+                self.metrics_collector.bytes_sent.get(victim_id, 0) - metrics.bytes_sent_normal
+            )
 
             if metrics.bytes_received_normal > 0:
                 metrics.bandwidth_amplification = (
@@ -215,6 +216,7 @@ class VictimMetricsCollector:
 
             # Connectivity
             from sparse_blobpool.actors.honest import Node
+
             if victim_id in simulator.actors:
                 node = simulator.actors[victim_id]
                 if isinstance(node, Node):
@@ -223,9 +225,7 @@ class VictimMetricsCollector:
                         metrics.connectivity_degradation = metrics.peers_lost / total_peers
 
         # Aggregate metrics
-        bandwidth_amplifications = [
-            m.bandwidth_amplification for m in self.victim_metrics.values()
-        ]
+        bandwidth_amplifications = [m.bandwidth_amplification for m in self.victim_metrics.values()]
         pollution_rates = [m.blobpool_pollution_rate for m in self.victim_metrics.values()]
         connectivity_losses = [m.connectivity_degradation for m in self.victim_metrics.values()]
 
@@ -243,9 +243,15 @@ class VictimMetricsCollector:
         return AggregatedVictimMetrics(
             total_victims=len(self.victim_metrics),
             victim_profiles=[self.victim_profile],
-            avg_bandwidth_amplification=mean(bandwidth_amplifications) if bandwidth_amplifications else 0.0,
-            max_bandwidth_amplification=max(bandwidth_amplifications) if bandwidth_amplifications else 0.0,
-            total_excess_bandwidth=sum(m.bytes_received_attack for m in self.victim_metrics.values()),
+            avg_bandwidth_amplification=mean(bandwidth_amplifications)
+            if bandwidth_amplifications
+            else 0.0,
+            max_bandwidth_amplification=max(bandwidth_amplifications)
+            if bandwidth_amplifications
+            else 0.0,
+            total_excess_bandwidth=sum(
+                m.bytes_received_attack for m in self.victim_metrics.values()
+            ),
             avg_pollution_rate=mean(pollution_rates) if pollution_rates else 0.0,
             max_pollution_rate=max(pollution_rates) if pollution_rates else 0.0,
             total_spam_accepted=sum(m.spam_txs_accepted for m in self.victim_metrics.values()),
@@ -254,7 +260,9 @@ class VictimMetricsCollector:
             total_valid_txs_dropped=sum(m.valid_txs_dropped for m in self.victim_metrics.values()),
             avg_connectivity_loss=mean(connectivity_losses) if connectivity_losses else 0.0,
             total_peers_lost=sum(m.peers_lost for m in self.victim_metrics.values()),
-            isolated_victims=sum(1 for m in self.victim_metrics.values() if m.connectivity_degradation > 0.5),
+            isolated_victims=sum(
+                1 for m in self.victim_metrics.values() if m.connectivity_degradation > 0.5
+            ),
             avg_cpu_increase=0.0,  # Would need resource monitoring
             avg_memory_increase=0.0,
             victim_coverage=len(self.victim_metrics) / len(self.victim_profile.victims),

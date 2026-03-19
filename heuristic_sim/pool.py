@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from heuristic_sim.config import EvictionPolicy, MAX_TXS_PER_SENDER, Role
+from heuristic_sim.config import MAX_TXS_PER_SENDER, EvictionPolicy, Role
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

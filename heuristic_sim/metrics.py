@@ -56,7 +56,9 @@ class SimulationResult:
         lines.append(f"Total rejected: {self.total_rejected}")
         if self.rate_limit_rejections:
             lines.append(f"Rate-limited: {self.rate_limit_rejections}")
-        lines.append(f"Pool size at end: {self.pool_occupancy[-1][1] if self.pool_occupancy else 0}")
+        lines.append(
+            f"Pool size at end: {self.pool_occupancy[-1][1] if self.pool_occupancy else 0}"
+        )
         if self.bandwidth_by_behavior:
             lines.append("\nBandwidth by behavior (bytes):")
             for beh, bw in sorted(self.bandwidth_by_behavior.items()):

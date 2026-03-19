@@ -1,5 +1,6 @@
 """Tests for attack scenarios."""
 
+from sparse_blobpool.actors.adversaries.victim_selection import VictimSelectionConfig
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.scenarios import (
     PoisoningScenarioConfig,
@@ -80,9 +81,10 @@ class TestSpamScenario:
 
     def test_targeted_spam(self) -> None:
         config = SimulationConfig(node_count=20, duration=1.0)
+        victim_config = VictimSelectionConfig(victim_fraction=0.25)
         attack_config = SpamScenarioConfig(
             spam_rate=5.0,
-            target_fraction=0.25,
+            victim_selection_config=victim_config,
         )
 
         sim = run_spam_scenario(
@@ -93,8 +95,7 @@ class TestSpamScenario:
         )
 
         adversary = sim.actors_by_type(SpamAdversary)[0]
-        # Check target fraction was applied correctly
-        assert adversary._spam_config.target_fraction == 0.25
+        assert adversary._spam_config.victim_selection_config is victim_config
 
 
 class TestWithholdingScenario:
@@ -146,10 +147,10 @@ class TestWithholdingScenario:
         withheld = adversary.get_withheld_columns(0xFFFFFFFFFFFFFFFF)
         assert len(withheld) == 48
 
-    def test_attacker_fraction(self) -> None:
+    def test_attacker_node_count(self) -> None:
         config = SimulationConfig(node_count=20, duration=1.0)
         attack_config = WithholdingScenarioConfig(
-            attacker_fraction=0.1,
+            num_attacker_nodes=2,
         )
 
         sim = run_withholding_scenario(
@@ -166,9 +167,10 @@ class TestWithholdingScenario:
 class TestPoisoningScenario:
     def test_creates_poisoning_adversary(self) -> None:
         config = SimulationConfig(node_count=10, duration=1.0)
+        victim_config = VictimSelectionConfig(num_victims=2)
         attack_config = PoisoningScenarioConfig(
-            num_victims=2,
             nonce_chain_length=8,
+            victim_selection_config=victim_config,
         )
 
         sim = run_poisoning_scenario(
@@ -179,7 +181,8 @@ class TestPoisoningScenario:
         )
 
         adversaries = sim.actors_by_type(TargetedPoisoningAdversary)
-        assert len(adversaries) == 2
+        assert len(adversaries) == 1
+        assert len(adversaries[0].victims) == 2
 
     def test_runs_with_default_config(self) -> None:
         config = SimulationConfig(node_count=10, duration=1.0)
@@ -194,10 +197,11 @@ class TestPoisoningScenario:
 
     def test_attack_progress(self) -> None:
         config = SimulationConfig(node_count=10, duration=5.0)
+        victim_config = VictimSelectionConfig(num_victims=1)
         attack_config = PoisoningScenarioConfig(
-            num_victims=1,
             nonce_chain_length=16,
             injection_interval=0.05,
+            victim_selection_config=victim_config,
         )
 
         sim = run_poisoning_scenario(
@@ -214,9 +218,10 @@ class TestPoisoningScenario:
 
     def test_victim_fraction(self) -> None:
         config = SimulationConfig(node_count=20, duration=1.0)
+        victim_config = VictimSelectionConfig(victim_fraction=0.1)
         attack_config = PoisoningScenarioConfig(
-            victim_fraction=0.1,
             nonce_chain_length=4,
+            victim_selection_config=victim_config,
         )
 
         sim = run_poisoning_scenario(
@@ -226,14 +231,15 @@ class TestPoisoningScenario:
             run_duration=1.0,
         )
 
-        adversaries = sim.actors_by_type(TargetedPoisoningAdversary)
-        assert len(adversaries) == 2
+        adversary = sim.actors_by_type(TargetedPoisoningAdversary)[0]
+        assert len(adversary.victims) == 2
 
-    def test_each_adversary_has_unique_victim(self) -> None:
+    def test_each_victim_is_unique(self) -> None:
         config = SimulationConfig(node_count=10, duration=1.0)
+        victim_config = VictimSelectionConfig(num_victims=3)
         attack_config = PoisoningScenarioConfig(
-            num_victims=3,
             nonce_chain_length=4,
+            victim_selection_config=victim_config,
         )
 
         sim = run_poisoning_scenario(
@@ -243,6 +249,6 @@ class TestPoisoningScenario:
             run_duration=1.0,
         )
 
-        adversaries = sim.actors_by_type(TargetedPoisoningAdversary)
-        victims = {a.victim_id for a in adversaries}
-        assert len(victims) == 3
+        adversary = sim.actors_by_type(TargetedPoisoningAdversary)[0]
+        assert len(adversary.victims) == 3
+        assert len(set(adversary.victims)) == 3

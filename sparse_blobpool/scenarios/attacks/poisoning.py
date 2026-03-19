@@ -26,6 +26,7 @@ from sparse_blobpool.protocol.messages import NewPooledTransactionHashes
 @dataclass
 class InjectNext(Command):
     """Trigger next poison tx injection in a nonce chain."""
+
     victim_id: ActorId
 
 
@@ -72,8 +73,7 @@ class TargetedPoisoningAdversary(Actor):
 
         # Initialize victim selector
         victim_config = poisoning_config.victim_selection_config or VictimSelectionConfig(
-            strategy=VictimSelectionStrategy.RANDOM,
-            num_victims=1
+            strategy=VictimSelectionStrategy.RANDOM, num_victims=1
         )
         self._victim_selector = VictimSelector(
             victim_config,

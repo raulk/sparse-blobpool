@@ -2,16 +2,23 @@
 """Test the complete attack integration with the fuzzer."""
 
 from pathlib import Path
-from random import Random
 
+from sparse_blobpool.actors.adversaries.victim_selection import (
+    VictimSelectionConfig,
+    VictimSelectionStrategy,
+)
 from sparse_blobpool.config import SimulationConfig
-from sparse_blobpool.fuzzer.config import FuzzerConfig, AttackScenarioConfig
 from sparse_blobpool.fuzzer.autopilot_with_attacks import run_fuzzer_with_attacks
-from sparse_blobpool.fuzzer.generator import generate_simulation_config
-from sparse_blobpool.scenarios.attacks.spam import run_spam_scenario, SpamScenarioConfig
-from sparse_blobpool.scenarios.attacks.poisoning import run_poisoning_scenario, PoisoningScenarioConfig
-from sparse_blobpool.scenarios.attacks.withholding import run_withholding_scenario, WithholdingScenarioConfig
-from sparse_blobpool.actors.adversaries.victim_selection import VictimSelectionStrategy, VictimSelectionConfig
+from sparse_blobpool.fuzzer.config import AttackScenarioConfig, FuzzerConfig
+from sparse_blobpool.scenarios.attacks.poisoning import (
+    PoisoningScenarioConfig,
+    run_poisoning_scenario,
+)
+from sparse_blobpool.scenarios.attacks.spam import SpamScenarioConfig, run_spam_scenario
+from sparse_blobpool.scenarios.attacks.withholding import (
+    WithholdingScenarioConfig,
+    run_withholding_scenario,
+)
 
 
 def test_spam_with_victim_selection():
@@ -29,10 +36,10 @@ def test_spam_with_victim_selection():
         victim_selection_config=VictimSelectionConfig(
             strategy=VictimSelectionStrategy.HIGH_DEGREE,
             num_victims=10,
-        )
+        ),
     )
 
-    print(f"Running spam attack targeting high-degree nodes...")
+    print("Running spam attack targeting high-degree nodes...")
     sim = run_spam_scenario(config, spam_config, num_transactions=50, run_duration=30.0)
     results = sim.finalize_metrics()
 
@@ -63,10 +70,10 @@ def test_poisoning_with_victim_selection():
         victim_selection_config=VictimSelectionConfig(
             strategy=VictimSelectionStrategy.CENTRAL,
             num_victims=5,
-        )
+        ),
     )
 
-    print(f"Running poisoning attack targeting central nodes...")
+    print("Running poisoning attack targeting central nodes...")
     sim = run_poisoning_scenario(config, poison_config, num_transactions=50, run_duration=30.0)
     results = sim.finalize_metrics()
 
@@ -95,11 +102,13 @@ def test_withholding_with_victim_selection():
         victim_selection_config=VictimSelectionConfig(
             strategy=VictimSelectionStrategy.EDGE,
             num_victims=10,
-        )
+        ),
     )
 
-    print(f"Running withholding attack with edge node victims...")
-    sim = run_withholding_scenario(config, withholding_config, num_transactions=50, run_duration=30.0)
+    print("Running withholding attack with edge node victims...")
+    sim = run_withholding_scenario(
+        config, withholding_config, num_transactions=50, run_duration=30.0
+    )
     results = sim.finalize_metrics()
 
     # Check withholding detection
@@ -129,7 +138,7 @@ def test_fuzzer_with_attacks():
             "spam_t1_2": 0.2,
             "withholding": 0.25,
             "poisoning": 0.25,
-        }
+        },
     )
 
     config = FuzzerConfig(
@@ -153,6 +162,7 @@ def test_fuzzer_with_attacks():
         runs_file = output_dir / "runs.ndjson"
         if runs_file.exists():
             import json
+
             with open(runs_file) as f:
                 runs = [json.loads(line) for line in f]
 
@@ -166,11 +176,14 @@ def test_fuzzer_with_attacks():
             # Show attack details
             for run in attack_runs:
                 attack = run["attack"]
-                print(f"  - {run['run_id']}: {attack['type']} with {len(attack.get('victims', []))} victims")
+                print(
+                    f"  - {run['run_id']}: {attack['type']} with {len(attack.get('victims', []))} victims"
+                )
 
     except Exception as e:
         print(f"✗ Fuzzer failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 

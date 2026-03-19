@@ -97,9 +97,15 @@ def execute_scenario_with_attack(
     attack_info = {
         "type": attack_selection.attack_type.value,
         "attacker_count": attack_selection.attacker_count,
-        "victim_count": len(attack_selection.victim_profile.victims) if attack_selection.victim_profile else 0,
-        "victim_strategy": attack_selection.victim_profile.strategy.value if attack_selection.victim_profile else None,
-        "victims": attack_selection.victim_profile.victims if attack_selection.victim_profile else [],
+        "victim_count": len(attack_selection.victim_profile.victims)
+        if attack_selection.victim_profile
+        else 0,
+        "victim_strategy": attack_selection.victim_profile.strategy.value
+        if attack_selection.victim_profile
+        else None,
+        "victims": attack_selection.victim_profile.victims
+        if attack_selection.victim_profile
+        else [],
         "params": attack_selection.attack_params,
         "metadata": attack_selection.metadata,
     }
@@ -168,7 +174,7 @@ def run_fuzzer_with_attacks(
             },
             indent=2,
         ),
-        encoding="utf-8"
+        encoding="utf-8",
     )
 
     run_count = 0
@@ -257,7 +263,12 @@ def run_fuzzer_with_attacks(
         should_trace = not config.trace_on_anomaly_only or not status.startswith("success")
         if should_trace:
             write_trace(
-                config.output_dir, run_id, config_to_dict(sim_config), metrics_dict, run_seed, attack_info
+                config.output_dir,
+                run_id,
+                config_to_dict(sim_config),
+                metrics_dict,
+                run_seed,
+                attack_info,
             )
 
         run_count += 1
@@ -355,6 +366,8 @@ def replay_run_with_attack(
         summary["error"] = str(error)
 
     save_run(db, summary)
-    write_trace(config.output_dir, run_id, config_to_dict(sim_config), metrics_dict, seed, attack_info)
+    write_trace(
+        config.output_dir, run_id, config_to_dict(sim_config), metrics_dict, seed, attack_info
+    )
 
     print(json.dumps(summary, indent=2))

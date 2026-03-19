@@ -16,13 +16,17 @@ from heuristic_sim.peers import (
 
 
 def _create_peers_and_events(
-    scenario: Scenario, config: HeuristicConfig, node: Node,
-    loop: EventLoop, rng: random.Random,
+    scenario: Scenario,
+    config: HeuristicConfig,
+    node: Node,
+    loop: EventLoop,
+    rng: random.Random,
 ) -> dict[str, PeerBehavior]:
     """Wire up honest + attacker peers and schedule their initial events."""
     behaviors: dict[str, PeerBehavior] = {}
     gen_kwargs: dict[str, Any] = {
-        "t_start": 0.0, "t_end": scenario.t_end,
+        "t_start": 0.0,
+        "t_end": scenario.t_end,
         "tx_rate": scenario.tx_arrival_rate,
         "blob_base_fee": scenario.blob_base_fee,
         "includability_discount": config.includability_discount,
@@ -65,16 +69,24 @@ def _schedule_periodic_events(scenario: Scenario, loop: EventLoop) -> None:
 
 
 def _dispatch_event(
-    event: Event, node: Node, behaviors: dict[str, PeerBehavior],
+    event: Event,
+    node: Node,
+    behaviors: dict[str, PeerBehavior],
     loop: EventLoop,
 ) -> None:
     """Route a single event to the appropriate Node handler and reschedule follow-ups."""
     if event.kind == "announce":
         d = event.data
         follow_ups = node.handle_announce(
-            peer_id=d["peer_id"], tx_hash=d["tx_hash"], sender=d["sender"],
-            nonce=d["nonce"], fee=d["fee"], cell_mask=d["cell_mask"],
-            is_provider=d["is_provider"], exclusive=d["exclusive"], t=event.t,
+            peer_id=d["peer_id"],
+            tx_hash=d["tx_hash"],
+            sender=d["sender"],
+            nonce=d["nonce"],
+            fee=d["fee"],
+            cell_mask=d["cell_mask"],
+            is_provider=d["is_provider"],
+            exclusive=d["exclusive"],
+            t=event.t,
         )
         for fu in follow_ups:
             loop.schedule(fu)
@@ -86,12 +98,16 @@ def _dispatch_event(
         if behavior is None:
             return
         result = behavior.respond_to_cell_request(
-            d["columns"], node.custody_mask,
+            d["columns"],
+            node.custody_mask,
         )
         follow_ups = node.handle_cells_response(
-            peer_id=peer_id, tx_hash=d["tx_hash"],
-            served=result["served"], failed=result["failed"],
-            custody_columns=d["custody_columns"], t=event.t,
+            peer_id=peer_id,
+            tx_hash=d["tx_hash"],
+            served=result["served"],
+            failed=result["failed"],
+            custody_columns=d["custody_columns"],
+            t=event.t,
         )
         for fu in follow_ups:
             loop.schedule(fu)
@@ -101,14 +117,13 @@ def _dispatch_event(
 
     elif event.kind == "inbound_request":
         node.handle_inbound_request(
-            event.data["peer_id"], event.data.get("columns", []), event.t,
+            event.data["peer_id"],
+            event.data.get("columns", []),
+            event.t,
         )
 
     elif event.kind == "block":
-        includable = [
-            tx.tx_hash for tx in node.pool.iter_all()
-            if tx.cell_mask == ALL_ONES
-        ]
+        includable = [tx.tx_hash for tx in node.pool.iter_all() if tx.cell_mask == ALL_ONES]
         selected = includable[:6]
         node.handle_block(selected, event.t)
 
@@ -157,7 +172,9 @@ def _compile_results(node: Node) -> SimulationResult:
 
 
 def run_simulation(
-    config: HeuristicConfig, scenario: Scenario, seed: int = 42,
+    config: HeuristicConfig,
+    scenario: Scenario,
+    seed: int = 42,
 ) -> SimulationResult:
     rng = random.Random(seed)
     node = Node(config, seed=rng.randint(0, 2**32))

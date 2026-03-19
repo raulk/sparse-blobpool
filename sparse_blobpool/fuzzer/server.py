@@ -95,9 +95,7 @@ def create_app(output_dir: Path, static_dir: Path | None = None) -> FastAPI:
             try:
                 new_runs = db.get_runs_since(last_id)
                 for run in new_runs:
-                    await manager.broadcast(
-                        json.dumps({"type": "new_run", "data": run})
-                    )
+                    await manager.broadcast(json.dumps({"type": "new_run", "data": run}))
                 if new_runs:
                     last_id = db.get_max_id()
             except Exception as e:

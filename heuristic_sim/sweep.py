@@ -76,7 +76,9 @@ def print_sweep_table(param: str, results: list[tuple[float, object]]) -> None:
     print("-" * len(header))
     for val, result in results:
         h4_total = result.peer_counts.get("withholder", 0) + result.peer_counts.get("spoofer", 0)
-        h5_total = result.peer_counts.get("free_rider", 0) + result.peer_counts.get("non_announcer", 0)
+        h5_total = result.peer_counts.get("free_rider", 0) + result.peer_counts.get(
+            "non_announcer", 0
+        )
         h4_str = f"{result.h4_disconnects}/{h4_total}" if h4_total else str(result.h4_disconnects)
         h5_str = f"{result.h5_disconnects}/{h5_total}" if h5_total else str(result.h5_disconnects)
         print(

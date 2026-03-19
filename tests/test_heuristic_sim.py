@@ -14,7 +14,6 @@ from heuristic_sim.config import (
     popcount,
 )
 from heuristic_sim.events import Event, EventLoop
-from heuristic_sim.metrics import SimulationResult
 from heuristic_sim.node import Node, TokenBucket
 from heuristic_sim.peers import (
     FreeRiderBehavior,
@@ -200,7 +199,10 @@ class TestPeerBehaviors:
         rng = random.Random(42)
         peer = SpammerBehavior(peer_id="s1", rng=rng, rate=5.0, below_includability=True)
         events = peer.generate_events(
-            t_start=0.0, t_end=10.0, blob_base_fee=1.0, includability_discount=0.7,
+            t_start=0.0,
+            t_end=10.0,
+            blob_base_fee=1.0,
+            includability_discount=0.7,
         )
         assert len(events) > 0
         for e in events:
@@ -261,8 +263,15 @@ class TestNodeAnnounce:
         node = Node(cfg, seed=42)
         node.add_peer(PeerState("p1", "honest", 0.0))
         events = node.handle_announce(
-            peer_id="p1", tx_hash="0xabc", sender="s1", nonce=0,
-            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=1.0,
+            peer_id="p1",
+            tx_hash="0xabc",
+            sender="s1",
+            nonce=0,
+            fee=1.0,
+            cell_mask=ALL_ONES,
+            is_provider=True,
+            exclusive=False,
+            t=1.0,
         )
         assert node.pool.contains("0xabc")
         sat_events = [e for e in events if e.kind == "saturation_check"]
@@ -274,8 +283,15 @@ class TestNodeAnnounce:
         node = Node(cfg, seed=42)
         node.add_peer(PeerState("p1", "honest", 0.0))
         node.handle_announce(
-            peer_id="p1", tx_hash="0xabc", sender="s1", nonce=0,
-            fee=0.5, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=1.0,
+            peer_id="p1",
+            tx_hash="0xabc",
+            sender="s1",
+            nonce=0,
+            fee=0.5,
+            cell_mask=ALL_ONES,
+            is_provider=True,
+            exclusive=False,
+            t=1.0,
         )
         assert not node.pool.contains("0xabc")
 
@@ -285,12 +301,26 @@ class TestNodeAnnounce:
         node.add_peer(PeerState("p1", "honest", 0.0))
         node.add_peer(PeerState("p2", "honest", 0.0))
         node.handle_announce(
-            peer_id="p1", tx_hash="0xabc", sender="s1", nonce=0,
-            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=1.0,
+            peer_id="p1",
+            tx_hash="0xabc",
+            sender="s1",
+            nonce=0,
+            fee=1.0,
+            cell_mask=ALL_ONES,
+            is_provider=True,
+            exclusive=False,
+            t=1.0,
         )
         node.handle_announce(
-            peer_id="p2", tx_hash="0xabc", sender="s1", nonce=0,
-            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=2.0,
+            peer_id="p2",
+            tx_hash="0xabc",
+            sender="s1",
+            nonce=0,
+            fee=1.0,
+            cell_mask=ALL_ONES,
+            is_provider=True,
+            exclusive=False,
+            t=2.0,
         )
         tx = node.pool.get("0xabc")
         assert tx is not None
@@ -418,7 +448,8 @@ class TestSimulation:
         scenario = Scenario(
             n_honest=10,
             attackers=[(5, "spammer", {"rate": 5.0, "below_includability": True})],
-            tx_arrival_rate=0.5, t_end=30.0,
+            tx_arrival_rate=0.5,
+            t_end=30.0,
         )
         result = run_simulation(HeuristicConfig(), scenario, seed=42)
         assert result.h1_rejections > 0
@@ -427,7 +458,8 @@ class TestSimulation:
         scenario = Scenario(
             n_honest=10,
             attackers=[(3, "withholder", {"random_fail_rate": 1.0})],
-            tx_arrival_rate=1.0, t_end=120.0,
+            tx_arrival_rate=1.0,
+            t_end=120.0,
         )
         result = run_simulation(HeuristicConfig(), scenario, seed=42)
         assert result.disconnects_by_behavior.get("withholder", 0) > 0
@@ -436,7 +468,8 @@ class TestSimulation:
         scenario = Scenario(
             n_honest=10,
             attackers=[(3, "selective_signaler", {"n_senders": 5, "txs_per_sender": 16})],
-            tx_arrival_rate=0.5, t_end=120.0,
+            tx_arrival_rate=0.5,
+            t_end=120.0,
         )
         result = run_simulation(HeuristicConfig(), scenario, seed=42)
         assert result.h2_evictions > 0
@@ -455,7 +488,8 @@ class TestMetrics:
                 (3, "withholder", {"random_fail_rate": 1.0}),
                 (2, "spoofer", {}),
             ],
-            tx_arrival_rate=2.0, t_end=120.0,
+            tx_arrival_rate=2.0,
+            t_end=120.0,
         )
         result = run_simulation(HeuristicConfig(), scenario, seed=42)
         summary = result.detection_summary()
@@ -467,7 +501,8 @@ class TestMetrics:
         scenario = Scenario(
             n_honest=10,
             attackers=[(2, "spammer", {"rate": 5.0, "below_includability": True})],
-            tx_arrival_rate=1.0, t_end=30.0,
+            tx_arrival_rate=1.0,
+            t_end=30.0,
         )
         result = run_simulation(HeuristicConfig(), scenario, seed=42)
         table = result.summary_table()
@@ -505,9 +540,7 @@ class TestFullIntegration:
         assert result.disconnects_by_behavior.get("withholder", 0) > 0, (
             "H4 should disconnect withholders"
         )
-        assert result.disconnects_by_behavior.get("spoofer", 0) > 0, (
-            "H4 should disconnect spoofers"
-        )
+        assert result.disconnects_by_behavior.get("spoofer", 0) > 0, "H4 should disconnect spoofers"
         assert result.disconnects_by_behavior.get("non_announcer", 0) > 0, (
             "H5 should disconnect non-announcers via request ratio"
         )
@@ -529,13 +562,12 @@ class TestFullIntegration:
         result = run_simulation(HeuristicConfig(), scenario, seed=42)
         n_outbound = round(50 * (1 - 0.68))
         n_inbound = 50 - n_outbound
-        inbound_peers = [
-            e for e in result.log
-            if e["event"] == "accept"
-        ]
+        [e for e in result.log if e["event"] == "accept"]
         # Verify through the node's peer state (re-run to inspect)
-        from heuristic_sim.runner import _create_peers_and_events
         import random as stdlib_random
+
+        from heuristic_sim.runner import _create_peers_and_events
+
         rng = stdlib_random.Random(42)
         node = Node(HeuristicConfig(), seed=rng.randint(0, 2**32))
         loop = EventLoop()
@@ -560,7 +592,10 @@ class TestFullIntegration:
 
     def test_pool_occupancy_tracked_over_time(self):
         scenario = Scenario(
-            n_honest=10, attackers=[], tx_arrival_rate=2.0, t_end=60.0,
+            n_honest=10,
+            attackers=[],
+            tx_arrival_rate=2.0,
+            t_end=60.0,
         )
         result = run_simulation(HeuristicConfig(), scenario, seed=42)
         assert len(result.pool_occupancy) > 1
@@ -578,10 +613,16 @@ class TestEvictionPolicy:
     def test_fee_based_evicts_lowest_fee(self):
         pool = TxStore(capacity=2, eviction_policy=EvictionPolicy.FEE_BASED)
         for i, fee in enumerate([5.0, 10.0, 15.0]):
-            pool.add(TxEntry(
-                tx_hash=f"tx{i}", sender=f"s{i}", nonce=0,
-                fee=fee, first_seen=float(i), role=Role.SAMPLER,
-            ))
+            pool.add(
+                TxEntry(
+                    tx_hash=f"tx{i}",
+                    sender=f"s{i}",
+                    nonce=0,
+                    fee=fee,
+                    first_seen=float(i),
+                    role=Role.SAMPLER,
+                )
+            )
         assert pool.count == 2
         assert pool.get("tx0") is None
         assert pool.get("tx1") is not None
@@ -589,10 +630,16 @@ class TestEvictionPolicy:
     def test_age_based_evicts_oldest(self):
         pool = TxStore(capacity=2, eviction_policy=EvictionPolicy.AGE_BASED)
         for i, fee in enumerate([15.0, 5.0, 10.0]):
-            pool.add(TxEntry(
-                tx_hash=f"tx{i}", sender=f"s{i}", nonce=0,
-                fee=fee, first_seen=float(i), role=Role.SAMPLER,
-            ))
+            pool.add(
+                TxEntry(
+                    tx_hash=f"tx{i}",
+                    sender=f"s{i}",
+                    nonce=0,
+                    fee=fee,
+                    first_seen=float(i),
+                    role=Role.SAMPLER,
+                )
+            )
         assert pool.count == 2
         # tx0 is oldest (first_seen=0.0), should be evicted
         assert pool.get("tx0") is None
@@ -601,23 +648,43 @@ class TestEvictionPolicy:
 
     def test_hybrid_considers_both_fee_and_age(self):
         pool = TxStore(
-            capacity=2, eviction_policy=EvictionPolicy.HYBRID, age_weight=0.5,
+            capacity=2,
+            eviction_policy=EvictionPolicy.HYBRID,
+            age_weight=0.5,
         )
         # tx0: low fee, old
         # tx1: high fee, recent
         # tx2: medium fee, medium age
-        pool.add(TxEntry(
-            tx_hash="old_cheap", sender="s0", nonce=0,
-            fee=1.0, first_seen=0.0, role=Role.SAMPLER,
-        ))
-        pool.add(TxEntry(
-            tx_hash="new_expensive", sender="s1", nonce=0,
-            fee=10.0, first_seen=10.0, role=Role.SAMPLER,
-        ))
-        pool.add(TxEntry(
-            tx_hash="mid", sender="s2", nonce=0,
-            fee=5.0, first_seen=5.0, role=Role.SAMPLER,
-        ))
+        pool.add(
+            TxEntry(
+                tx_hash="old_cheap",
+                sender="s0",
+                nonce=0,
+                fee=1.0,
+                first_seen=0.0,
+                role=Role.SAMPLER,
+            )
+        )
+        pool.add(
+            TxEntry(
+                tx_hash="new_expensive",
+                sender="s1",
+                nonce=0,
+                fee=10.0,
+                first_seen=10.0,
+                role=Role.SAMPLER,
+            )
+        )
+        pool.add(
+            TxEntry(
+                tx_hash="mid",
+                sender="s2",
+                nonce=0,
+                fee=5.0,
+                first_seen=5.0,
+                role=Role.SAMPLER,
+            )
+        )
         assert pool.count == 2
         # old_cheap should be evicted (worst combined score)
         assert pool.get("old_cheap") is None
@@ -644,17 +711,38 @@ class TestTokenBucket:
         node.add_peer(PeerState("p1", "honest", 0.0))
         # First two consume the burst
         node.handle_announce(
-            peer_id="p1", tx_hash="tx1", sender="s1", nonce=0,
-            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=0.0,
+            peer_id="p1",
+            tx_hash="tx1",
+            sender="s1",
+            nonce=0,
+            fee=1.0,
+            cell_mask=ALL_ONES,
+            is_provider=True,
+            exclusive=False,
+            t=0.0,
         )
         node.handle_announce(
-            peer_id="p1", tx_hash="tx2", sender="s2", nonce=0,
-            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=0.0,
+            peer_id="p1",
+            tx_hash="tx2",
+            sender="s2",
+            nonce=0,
+            fee=1.0,
+            cell_mask=ALL_ONES,
+            is_provider=True,
+            exclusive=False,
+            t=0.0,
         )
         # Third at same time should be rate-limited
         node.handle_announce(
-            peer_id="p1", tx_hash="tx3", sender="s3", nonce=0,
-            fee=1.0, cell_mask=ALL_ONES, is_provider=True, exclusive=False, t=0.0,
+            peer_id="p1",
+            tx_hash="tx3",
+            sender="s3",
+            nonce=0,
+            fee=1.0,
+            cell_mask=ALL_ONES,
+            is_provider=True,
+            exclusive=False,
+            t=0.0,
         )
         assert node.pool.contains("tx1")
         assert node.pool.contains("tx2")

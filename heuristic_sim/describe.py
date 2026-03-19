@@ -188,15 +188,17 @@ def main() -> None:
         print(f"  {name:<35} {getattr(cfg, name)}")
 
     s = DEFAULT_SCENARIO
-    print(f"\nDEFAULT SCENARIO")
-    print(f"----------------\n")
+    print("\nDEFAULT SCENARIO")
+    print("----------------\n")
     print(f"  Honest peers:      {s.n_honest}")
-    print(f"  Inbound ratio:     {s.inbound_ratio} ({round(s.n_honest * s.inbound_ratio)} inbound, {round(s.n_honest * (1 - s.inbound_ratio))} outbound)")
+    print(
+        f"  Inbound ratio:     {s.inbound_ratio} ({round(s.n_honest * s.inbound_ratio)} inbound, {round(s.n_honest * (1 - s.inbound_ratio))} outbound)"
+    )
     print(f"  Tx arrival rate:   {s.tx_arrival_rate}/s per peer")
     print(f"  Duration:          {s.t_end}s")
     print(f"  Block interval:    {s.block_interval}s")
     print(f"  Blob base fee:     {s.blob_base_fee}")
-    print(f"\n  Attackers:")
+    print("\n  Attackers:")
     for count, btype, params in s.attackers:
         param_str = ", ".join(f"{k}={v}" for k, v in params.items()) if params else "defaults"
         print(f"    {count}x {btype:<25} {param_str}")

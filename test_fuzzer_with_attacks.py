@@ -3,10 +3,10 @@
 
 from pathlib import Path
 
+from sparse_blobpool.actors.adversaries.victim_selection import VictimSelectionStrategy
 from sparse_blobpool.fuzzer.autopilot_with_attacks import run_fuzzer_with_attacks
 from sparse_blobpool.fuzzer.config import FuzzerConfig
 from sparse_blobpool.scenarios.attacks.registry import AttackRegistry, AttackScenario, AttackType
-from sparse_blobpool.actors.adversaries.victim_selection import VictimSelectionStrategy
 
 
 def create_test_registry() -> AttackRegistry:

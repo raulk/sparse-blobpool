@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+
 from sparse_blobpool.scenarios.baseline import run_baseline_scenario
 
 if TYPE_CHECKING:
@@ -49,6 +50,7 @@ def execute_attack(
         match attack_type:
             case "spam_t1_1" | "spam_t1_2":
                 from sparse_blobpool.scenarios.attacks.spam import run_spam_scenario
+
                 sim = run_spam_scenario(
                     config=config,
                     attack_config=attack_config,
@@ -57,6 +59,7 @@ def execute_attack(
                 )
             case "withholding_t2_1":
                 from sparse_blobpool.scenarios.attacks.withholding import run_withholding_scenario
+
                 sim = run_withholding_scenario(
                     config=config,
                     attack_config=attack_config,
@@ -65,6 +68,7 @@ def execute_attack(
                 )
             case "poisoning_t4_2":
                 from sparse_blobpool.scenarios.attacks.poisoning import run_poisoning_scenario
+
                 sim = run_poisoning_scenario(
                     config=config,
                     attack_config=attack_config,
