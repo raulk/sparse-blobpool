@@ -89,12 +89,12 @@ class Node(Actor):
     """
 
     def __init__(
-        self,
-        actor_id: ActorId,
-        simulator: Simulator,
-        config: SimulationConfig,
-        custody_columns: int,
-        metrics: MetricsCollector,
+            self,
+            actor_id: ActorId,
+            simulator: Simulator,
+            config: SimulationConfig,
+            custody_columns: int,
+            metrics: MetricsCollector,
     ) -> None:
         super().__init__(actor_id, simulator)
         self._config = config
@@ -195,7 +195,7 @@ class Node(Actor):
         hash_bytes = sha256(combined).digest()
         # Use first 8 bytes as a float in [0, 1)
         hash_int = int.from_bytes(hash_bytes[:8], "big")
-        probability = hash_int / (2**64)
+        probability = hash_int / (2 ** 64)
 
         if probability < self._config.provider_probability:
             return Role.PROVIDER
@@ -246,8 +246,8 @@ class Node(Actor):
 
                 # If sampler awaiting providers and we now have enough, proceed
                 if (
-                    pending.state == TxState.AWAITING_PROVIDERS
-                    and len(pending.provider_peers) >= self._config.min_providers_before_sample
+                        pending.state == TxState.AWAITING_PROVIDERS
+                        and len(pending.provider_peers) >= self._config.min_providers_before_sample
                 ):
                     self._start_sampler_fetch(tx_hash)
                 continue
@@ -313,7 +313,7 @@ class Node(Actor):
         self._send_get_transactions(tx_hash, target, request_id)
 
     def _send_get_transactions(
-        self, tx_hash: TxHash, to_peer: ActorId, request_id: RequestId
+            self, tx_hash: TxHash, to_peer: ActorId, request_id: RequestId
     ) -> None:
         pending = self._pending_txs.get(tx_hash)
         if pending is None:
@@ -340,7 +340,9 @@ class Node(Actor):
         for tx_hash in msg.tx_hashes:
             entry = self._pool.get(tx_hash)
             if entry is not None:
-                transactions.append(TxBody(tx_hash=entry.tx_hash, tx_bytes=entry.tx_size))
+                # Approximate elided wrapper size: 300 bytes base + 96 bytes per blob
+                elided_size = 300 + (entry.blob_count * 96)
+                transactions.append(TxBody(tx_hash=entry.tx_hash, tx_bytes=elided_size))
             else:
                 transactions.append(None)
 
@@ -530,10 +532,13 @@ class Node(Actor):
             if peer in entry.announced_to:
                 continue
 
+            # Announcements should not advertise the full blob size for Type-3 txs.
+            # Keep announcements lightweight by sending the elided wrapper size.
+            elided_size = 300 + (entry.blob_count * 96)
             msg = NewPooledTransactionHashes(
                 sender=self._id,
                 types=bytes([3]),
-                sizes=[entry.tx_size],
+                sizes=[elided_size],
                 hashes=[entry.tx_hash],
                 cell_mask=entry.cell_mask,
             )
@@ -672,6 +677,17 @@ class Node(Actor):
 
         for peer in sorted(self._peers):
             self.send(announcement, peer)
+
+        # If the simulator exposes a BlockProducer with diagnostic counters,
+        # increment them so scenarios can report counts without additional wiring.
+        try:
+            bp = self._simulator.block_producer
+            if hasattr(bp, "blocks_produced"):
+                bp.blocks_produced += 1
+            if hasattr(bp, "total_blobs_included"):
+                bp.total_blobs_included += sum(tx.blob_count for tx in selected_txs)
+        except Exception:
+            pass
 
         self._handle_block_announcement(announcement)
 

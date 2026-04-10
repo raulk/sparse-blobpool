@@ -27,6 +27,11 @@ class BlockProducer(Actor):
         self._config = config or SimulationConfig()
         self._current_slot = 0
 
+        # Diagnostic counters kept here for tooling and scenarios that print them
+        # These are incremented by proposers when they successfully produce a block.
+        self.blocks_produced: int = 0
+        self.total_blobs_included: int = 0
+
     @property
     def current_slot(self) -> int:
         return self._current_slot
