@@ -89,12 +89,12 @@ class Node(Actor):
     """
 
     def __init__(
-            self,
-            actor_id: ActorId,
-            simulator: Simulator,
-            config: SimulationConfig,
-            custody_columns: int,
-            metrics: MetricsCollector,
+        self,
+        actor_id: ActorId,
+        simulator: Simulator,
+        config: SimulationConfig,
+        custody_columns: int,
+        metrics: MetricsCollector,
     ) -> None:
         super().__init__(actor_id, simulator)
         self._config = config
@@ -195,7 +195,7 @@ class Node(Actor):
         hash_bytes = sha256(combined).digest()
         # Use first 8 bytes as a float in [0, 1)
         hash_int = int.from_bytes(hash_bytes[:8], "big")
-        probability = hash_int / (2 ** 64)
+        probability = hash_int / (2**64)
 
         if probability < self._config.provider_probability:
             return Role.PROVIDER
@@ -246,8 +246,8 @@ class Node(Actor):
 
                 # If sampler awaiting providers and we now have enough, proceed
                 if (
-                        pending.state == TxState.AWAITING_PROVIDERS
-                        and len(pending.provider_peers) >= self._config.min_providers_before_sample
+                    pending.state == TxState.AWAITING_PROVIDERS
+                    and len(pending.provider_peers) >= self._config.min_providers_before_sample
                 ):
                     self._start_sampler_fetch(tx_hash)
                 continue
@@ -313,7 +313,7 @@ class Node(Actor):
         self._send_get_transactions(tx_hash, target, request_id)
 
     def _send_get_transactions(
-            self, tx_hash: TxHash, to_peer: ActorId, request_id: RequestId
+        self, tx_hash: TxHash, to_peer: ActorId, request_id: RequestId
     ) -> None:
         pending = self._pending_txs.get(tx_hash)
         if pending is None:
