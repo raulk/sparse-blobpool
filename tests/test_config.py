@@ -1,5 +1,7 @@
 """Tests for simulation configuration."""
 
+import pytest
+
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.topology import (
     DIVERSE,
@@ -30,6 +32,7 @@ class TestSimulationConfig:
 
         # Protocol (EIP-8070)
         assert config.provider_probability == 0.15
+        assert config.legacy_protocol_probability == 0.0
         assert config.min_providers_before_sample == 2
         assert config.extra_random_columns == 1
         assert config.max_columns_per_request == 8
@@ -63,6 +66,17 @@ class TestSimulationConfig:
         assert config.provider_probability == 0.20
         assert config.interconnection_policy == LATENCY_AWARE
         assert config.seed == 999
+
+    def test_legacy_protocol_probability_validation(self) -> None:
+        """Legacy protocol probability must be in [0, 1]."""
+        SimulationConfig(legacy_protocol_probability=0.0)
+        SimulationConfig(legacy_protocol_probability=1.0)
+
+        with pytest.raises(ValueError, match="legacy_protocol_probability"):
+            SimulationConfig(legacy_protocol_probability=-0.1)
+
+        with pytest.raises(ValueError, match="legacy_protocol_probability"):
+            SimulationConfig(legacy_protocol_probability=1.1)
 
     def test_config_is_frozen(self) -> None:
         """Configuration is immutable after creation."""

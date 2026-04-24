@@ -1,13 +1,26 @@
-"""eth/71 protocol message types for sparse blobpool."""
+"""eth/70 and eth/71 protocol message types for sparse blobpool."""
 
 from dataclasses import dataclass, field
+from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 from sparse_blobpool.core.events import Message
-from sparse_blobpool.protocol.constants import CELL_SIZE, MESSAGE_OVERHEAD
+from sparse_blobpool.protocol.constants import CELL_SIZE, CELLS_PER_BLOB, MESSAGE_OVERHEAD
 
 if TYPE_CHECKING:
     from sparse_blobpool.core.types import ActorId, TxHash
+
+
+class EthProtocol(Enum):
+    """Negotiated transaction propagation protocol for a peer edge."""
+
+    ETH70 = auto()
+    ETH71 = auto()
+
+
+def full_blob_tx_size(tx_size: int, blob_count: int) -> int:
+    """Return eth/70 full transaction bytes for a type-3 blob transaction."""
+    return tx_size + blob_count * CELLS_PER_BLOB * CELL_SIZE
 
 
 @dataclass

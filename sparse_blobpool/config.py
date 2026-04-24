@@ -27,6 +27,7 @@ class SimulationConfig:
 
     # Protocol parameters (EIP-8070)
     provider_probability: float = 0.15  # p
+    legacy_protocol_probability: float = 1.0  # Probability a node is eth/70-only
     min_providers_before_sample: int = 2
     extra_random_columns: int = 1  # C_extra
     max_columns_per_request: int = 8  # C_req
@@ -54,6 +55,9 @@ class SimulationConfig:
     default_bandwidth: float = 100 * 1024 * 1024  # 100 MB/s
 
     def __post_init__(self) -> None:
+        if not 0.0 <= self.legacy_protocol_probability <= 1.0:
+            raise ValueError("legacy_protocol_probability must be in [0, 1]")
+
         if self.interconnection_policy is None:
             from sparse_blobpool.core.topology import GEOGRAPHIC
 

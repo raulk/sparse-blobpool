@@ -27,6 +27,7 @@ def _make_good_results() -> SimulationResults:
     return SimulationResults(
         total_bandwidth_bytes=1000,
         bandwidth_per_blob=100.0,
+        bandwidth_per_node=10.0,
         bandwidth_reduction_vs_full=0.5,
         median_propagation_time=0.1,
         p99_propagation_time=1.0,
@@ -53,6 +54,7 @@ def test_detect_anomalies_p99_propagation_time() -> None:
     bad = SimulationResults(
         total_bandwidth_bytes=1000,
         bandwidth_per_blob=100.0,
+        bandwidth_per_node=10.0,
         bandwidth_reduction_vs_full=0.5,
         median_propagation_time=0.1,
         p99_propagation_time=50.0,
@@ -77,6 +79,7 @@ def test_detect_anomalies_reconstruction_success_rate() -> None:
     bad = SimulationResults(
         total_bandwidth_bytes=1000,
         bandwidth_per_blob=100.0,
+        bandwidth_per_node=10.0,
         bandwidth_reduction_vs_full=0.5,
         median_propagation_time=0.1,
         p99_propagation_time=1.0,
@@ -101,6 +104,7 @@ def test_detect_anomalies_false_availability_rate() -> None:
     bad = SimulationResults(
         total_bandwidth_bytes=1000,
         bandwidth_per_blob=100.0,
+        bandwidth_per_node=10.0,
         bandwidth_reduction_vs_full=0.5,
         median_propagation_time=0.1,
         p99_propagation_time=1.0,
@@ -125,6 +129,7 @@ def test_detect_anomalies_provider_coverage() -> None:
     bad = SimulationResults(
         total_bandwidth_bytes=1000,
         bandwidth_per_blob=100.0,
+        bandwidth_per_node=10.0,
         bandwidth_reduction_vs_full=0.5,
         median_propagation_time=0.1,
         p99_propagation_time=1.0,
@@ -149,6 +154,7 @@ def test_detect_anomalies_local_availability_met() -> None:
     bad = SimulationResults(
         total_bandwidth_bytes=1000,
         bandwidth_per_blob=100.0,
+        bandwidth_per_node=10.0,
         bandwidth_reduction_vs_full=0.5,
         median_propagation_time=0.1,
         p99_propagation_time=1.0,
@@ -173,6 +179,7 @@ def test_detect_anomalies_all_violations() -> None:
     bad = SimulationResults(
         total_bandwidth_bytes=1000,
         bandwidth_per_blob=100.0,
+        bandwidth_per_node=10.0,
         bandwidth_reduction_vs_full=0.5,
         median_propagation_time=0.1,
         p99_propagation_time=50.0,

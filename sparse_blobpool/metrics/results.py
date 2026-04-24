@@ -34,6 +34,7 @@ class SimulationResults:
     # Bandwidth efficiency
     total_bandwidth_bytes: int
     bandwidth_per_blob: float
+    bandwidth_per_node: float
     bandwidth_reduction_vs_full: float  # Ratio vs naive full propagation
 
     # Propagation performance
@@ -53,6 +54,10 @@ class SimulationResults:
 
     # DA check metrics (per block)
     da_checks_passed_rate: float  # Fraction of nodes passing DA checks across all blocks
+
+    # eth/70 compatibility metrics
+    legacy_full_fetch_ratio: float = 0.0  # Full data fetches served through eth/70
+    full_data_coverage: float = 0.0  # Fraction of observed node/tx pairs with full data
 
     # Attack outcomes (populated when adversaries present)
     spam_amplification_factor: float = 0.0
@@ -74,6 +79,7 @@ class SimulationResults:
         return {
             "total_bandwidth_bytes": self.total_bandwidth_bytes,
             "bandwidth_per_blob": self.bandwidth_per_blob,
+            "bandwidth_per_node": self.bandwidth_per_node,
             "bandwidth_reduction_vs_full": self.bandwidth_reduction_vs_full,
             "median_propagation_time": self.median_propagation_time,
             "p99_propagation_time": self.p99_propagation_time,
@@ -83,6 +89,8 @@ class SimulationResults:
             "false_availability_rate": self.false_availability_rate,
             "provider_coverage": self.provider_coverage,
             "expected_provider_coverage": self.expected_provider_coverage,
+            "legacy_full_fetch_ratio": self.legacy_full_fetch_ratio,
+            "full_data_coverage": self.full_data_coverage,
             "local_availability_met": self.local_availability_met,
             "da_checks_passed_rate": self.da_checks_passed_rate,
             "spam_amplification_factor": self.spam_amplification_factor,

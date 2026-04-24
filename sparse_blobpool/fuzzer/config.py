@@ -79,6 +79,7 @@ class ParameterRanges:
     mesh_degree: IntRange = (50, 50)  # fixed at 50
 
     provider_probability: FloatRange = (0.15, 0.15)  # fixed at 0.15
+    legacy_protocol_probability: FloatRange = (0.0, 0.0)  # fixed at all eth/71
     min_providers_before_sample: IntRange = (2, 2)  # fixed at 2
     extra_random_columns: IntRange = (1, 2)
     max_columns_per_request: IntRange = (16, 16)  # fixed at 16

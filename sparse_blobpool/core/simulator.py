@@ -164,6 +164,7 @@ class Simulator:
         from sparse_blobpool.core.network import Network
         from sparse_blobpool.core.topology import build_topology
         from sparse_blobpool.metrics.collector import MetricsCollector
+        from sparse_blobpool.protocol.messages import EthProtocol
 
         if config is None:
             config = SimulationConfig()
@@ -184,12 +185,22 @@ class Simulator:
 
         nodes: list[Node] = []
         for actor_id, country in topology.countries.items():
+            if config.legacy_protocol_probability <= 0.0:
+                protocols = {EthProtocol.ETH70, EthProtocol.ETH71}
+            elif (
+                config.legacy_protocol_probability >= 1.0
+                or simulator.rng.random() < config.legacy_protocol_probability
+            ):
+                protocols = {EthProtocol.ETH70}
+            else:
+                protocols = {EthProtocol.ETH70, EthProtocol.ETH71}
             node = Node(
                 actor_id=actor_id,
                 simulator=simulator,
                 config=config,
                 custody_columns=config.custody_columns,
                 metrics=metrics,
+                protocols=protocols,
             )
             simulator.register_actor(node)
             nodes.append(node)
@@ -204,8 +215,14 @@ class Simulator:
             node_b = node_lookup.get(node_b_id)
 
             if node_a is not None and node_b is not None:
-                node_a.add_peer(node_b_id)
-                node_b.add_peer(node_a_id)
+                protocol = (
+                    EthProtocol.ETH71
+                    if node_a.supports_protocol(EthProtocol.ETH71)
+                    and node_b.supports_protocol(EthProtocol.ETH71)
+                    else EthProtocol.ETH70
+                )
+                node_a.add_peer(node_b_id, protocol)
+                node_b.add_peer(node_a_id, protocol)
 
         block_producer = BlockProducer(simulator=simulator, config=config)
         simulator.register_actor(block_producer)

@@ -59,6 +59,18 @@ class TestMetricsCollector:
         assert tx_metrics.provider_count == 0
         assert tx_metrics.sampler_count == 1
 
+    def test_record_tx_seen_legacy_provider(self) -> None:
+        sim = Simulator()
+        metrics = MetricsCollector(simulator=sim, node_count=10)
+
+        tx_hash = TxHash("abc123")
+        metrics.record_tx_seen(ActorId("node1"), tx_hash, Role.LEGACY_PROVIDER, ALL_ONES)
+
+        tx_metrics = metrics.tx_metrics[tx_hash]
+        assert tx_metrics.provider_count == 0
+        assert tx_metrics.legacy_provider_count == 1
+        assert tx_metrics.sampler_count == 0
+
     def test_propagation_complete_tracking(self) -> None:
         sim = Simulator()
         metrics = MetricsCollector(simulator=sim, node_count=10)
@@ -103,8 +115,25 @@ class TestMetricsCollector:
         results = metrics.finalize()
 
         assert results.total_bandwidth_bytes == 1000
+        assert results.bandwidth_per_node == 100.0
         assert results.propagation_success_rate == 1.0
         assert results.observed_provider_ratio == 1.0  # All providers
+
+    def test_finalize_legacy_metrics_exclude_sparse_provider_ratio(self) -> None:
+        sim = Simulator()
+        metrics = MetricsCollector(simulator=sim, node_count=4)
+
+        tx_hash = TxHash("abc123")
+        metrics.record_tx_seen(ActorId("node1"), tx_hash, Role.PROVIDER, ALL_ONES)
+        metrics.record_tx_seen(ActorId("node2"), tx_hash, Role.SAMPLER, 0xFF)
+        metrics.record_tx_seen(ActorId("node3"), tx_hash, Role.LEGACY_PROVIDER, ALL_ONES)
+
+        results = metrics.finalize()
+
+        assert results.observed_provider_ratio == 0.5
+        assert results.provider_coverage == 0.5
+        assert results.legacy_full_fetch_ratio == 0.5
+        assert results.full_data_coverage == 2 / 3
 
     def test_snapshot_creates_timeseries(self) -> None:
         from dataclasses import dataclass
@@ -155,3 +184,5 @@ class TestSimulationResults:
         assert "total_bandwidth_bytes" in result_dict
         assert "bandwidth_per_blob" in result_dict
         assert "observed_provider_ratio" in result_dict
+        assert "legacy_full_fetch_ratio" in result_dict
+        assert "full_data_coverage" in result_dict

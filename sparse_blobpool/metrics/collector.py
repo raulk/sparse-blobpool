@@ -35,6 +35,7 @@ class TxMetrics:
     propagation_complete_time: float | None = None  # When 99% of nodes saw it
     provider_count: int = 0
     sampler_count: int = 0
+    legacy_provider_count: int = 0
     nodes_seen: set[ActorId] = field(default_factory=set)
     cell_masks: dict[ActorId, int] = field(default_factory=dict)  # Node -> cell_mask
     included_at_slot: int | None = None
@@ -143,8 +144,11 @@ class MetricsCollector:
         metrics.nodes_seen.add(node_id)
         metrics.cell_masks[node_id] = cell_mask
 
-        # Track role distribution
-        if cell_mask == ALL_ONES:
+        # Track role distribution. Sparse provider metrics intentionally exclude
+        # eth/70 full fetches so provider coverage remains an eth/71 signal.
+        if role.name == "LEGACY_PROVIDER":
+            metrics.legacy_provider_count += 1
+        elif role.name == "PROVIDER":
             metrics.provider_count += 1
         else:
             metrics.sampler_count += 1
@@ -261,7 +265,9 @@ class MetricsCollector:
 
         # Compute derived metrics
         total_providers = sum(m.provider_count for m in self.tx_metrics.values())
-        total_roles = sum(m.provider_count + m.sampler_count for m in self.tx_metrics.values())
+        total_samplers = sum(m.sampler_count for m in self.tx_metrics.values())
+        total_legacy_providers = sum(m.legacy_provider_count for m in self.tx_metrics.values())
+        total_roles = total_providers + total_samplers
 
         # Bandwidth per blob (average)
         bandwidth_per_blob = self._total_bytes / total_txs if total_txs > 0 else 0.0
@@ -274,13 +280,25 @@ class MetricsCollector:
         # Provider coverage: average fraction of nodes that became providers per tx
         # (among nodes that saw each tx)
         provider_coverages = []
+        full_data_coverages = []
         for metrics in self.tx_metrics.values():
+            sparse_roles = metrics.provider_count + metrics.sampler_count
+            if sparse_roles > 0:
+                provider_coverages.append(metrics.provider_count / sparse_roles)
+
             nodes_seen = len(metrics.nodes_seen)
             if nodes_seen > 0:
-                provider_coverages.append(metrics.provider_count / nodes_seen)
+                full_data_coverages.append(
+                    (metrics.provider_count + metrics.legacy_provider_count) / nodes_seen
+                )
         provider_coverage = (
             sum(provider_coverages) / len(provider_coverages) if provider_coverages else 0.0
         )
+        full_data_coverage = (
+            sum(full_data_coverages) / len(full_data_coverages) if full_data_coverages else 0.0
+        )
+        full_fetches = total_providers + total_legacy_providers
+        legacy_full_fetch_ratio = total_legacy_providers / full_fetches if full_fetches > 0 else 0.0
 
         # Local availability met: fraction of nodes meeting local availability
         # Providers need full blob (ALL_ONES), samplers need custody columns
@@ -325,6 +343,9 @@ class MetricsCollector:
             # Bandwidth
             total_bandwidth_bytes=self._total_bytes,
             bandwidth_per_blob=bandwidth_per_blob,
+            bandwidth_per_node=(
+                self._total_bytes / self.node_count if self.node_count > 0 else 0.0
+            ),
             bandwidth_reduction_vs_full=bandwidth_reduction,
             # Propagation
             median_propagation_time=median(propagation_times) if propagation_times else 0.0,
@@ -343,6 +364,8 @@ class MetricsCollector:
             # Sparse protocol metrics
             provider_coverage=provider_coverage,
             expected_provider_coverage=self.expected_provider_probability,
+            legacy_full_fetch_ratio=legacy_full_fetch_ratio,
+            full_data_coverage=full_data_coverage,
             local_availability_met=local_availability_met,
             da_checks_passed_rate=da_checks_passed_rate,
             # Attack outcomes

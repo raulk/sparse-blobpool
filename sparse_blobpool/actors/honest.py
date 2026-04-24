@@ -28,10 +28,12 @@ from sparse_blobpool.protocol.messages import (
     Block,
     BlockBroadcast,
     Cells,
+    EthProtocol,
     GetCells,
     GetPooledTransactions,
     NewPooledTransactionHashes,
     PooledTransactions,
+    full_blob_tx_size,
 )
 
 if TYPE_CHECKING:
@@ -46,6 +48,7 @@ class Role(Enum):
 
     PROVIDER = auto()  # Fetch and store full blob payload
     SAMPLER = auto()  # Sample custody-aligned cells only
+    LEGACY_PROVIDER = auto()  # Received full blob payload through eth/70
 
 
 class TxState(Enum):
@@ -74,7 +77,7 @@ class PendingTx:
 @dataclass
 class PendingRequest:
     request_id: RequestId
-    tx_hash: TxHash
+    tx_hashes: list[TxHash]
     target_peer: ActorId
     request_type: str  # "tx" or "cells"
     sent_at: float
@@ -95,6 +98,7 @@ class Node(Actor):
         config: SimulationConfig,
         custody_columns: int,
         metrics: MetricsCollector,
+        protocols: set[EthProtocol] | None = None,
     ) -> None:
         super().__init__(actor_id, simulator)
         self._config = config
@@ -104,6 +108,8 @@ class Node(Actor):
 
         # Peer connections
         self._peers: set[ActorId] = set()
+        self._protocols = protocols or {EthProtocol.ETH70, EthProtocol.ETH71}
+        self._peer_protocols: dict[ActorId, EthProtocol] = {}
 
         # Transaction processing state
         self._pending_txs: dict[TxHash, PendingTx] = {}
@@ -122,14 +128,35 @@ class Node(Actor):
         return self._peers
 
     @property
+    def protocols(self) -> set[EthProtocol]:
+        return set(self._protocols)
+
+    @property
     def custody_mask(self) -> int:
         return self._custody_mask
 
-    def add_peer(self, peer_id: ActorId) -> None:
+    def add_peer(
+        self,
+        peer_id: ActorId,
+        negotiated_protocol: EthProtocol | None = None,
+    ) -> None:
         self._peers.add(peer_id)
+        self._peer_protocols[peer_id] = negotiated_protocol or self._default_peer_protocol()
 
     def remove_peer(self, peer_id: ActorId) -> None:
         self._peers.discard(peer_id)
+        self._peer_protocols.pop(peer_id, None)
+
+    def negotiated_protocol(self, peer_id: ActorId) -> EthProtocol:
+        return self._peer_protocols.get(peer_id, self._default_peer_protocol())
+
+    def supports_protocol(self, protocol: EthProtocol) -> bool:
+        return protocol in self._protocols
+
+    def _default_peer_protocol(self) -> EthProtocol:
+        if EthProtocol.ETH71 in self._protocols:
+            return EthProtocol.ETH71
+        return EthProtocol.ETH70
 
     def on_event(self, payload: EventPayload) -> None:
         match payload:
@@ -223,6 +250,8 @@ class Node(Actor):
 
     def _handle_announcement(self, msg: NewPooledTransactionHashes) -> None:
         sender = msg.sender
+        peer_protocol = self.negotiated_protocol(sender)
+        legacy_fetch_hashes: list[TxHash] = []
 
         for i, tx_hash in enumerate(msg.hashes):
             tx_type = msg.types[i] if i < len(msg.types) else 0
@@ -235,9 +264,19 @@ class Node(Actor):
             if self._pool.contains(tx_hash):
                 continue
 
+            uses_legacy = peer_protocol == EthProtocol.ETH70 or msg.cell_mask is None
+
             # Check if we're already processing this tx
             if tx_hash in self._pending_txs:
                 pending = self._pending_txs[tx_hash]
+
+                if uses_legacy:
+                    pending.provider_peers.add(sender)
+                    if pending.state in {TxState.ANNOUNCED, TxState.AWAITING_PROVIDERS}:
+                        pending.role = Role.LEGACY_PROVIDER
+                        legacy_fetch_hashes.append(tx_hash)
+                    continue
+
                 # Record peer based on their availability
                 if msg.cell_mask == ALL_ONES:
                     pending.provider_peers.add(sender)
@@ -250,6 +289,18 @@ class Node(Actor):
                     and len(pending.provider_peers) >= self._config.min_providers_before_sample
                 ):
                     self._start_sampler_fetch(tx_hash)
+                continue
+
+            if uses_legacy:
+                pending = PendingTx(
+                    tx_hash=tx_hash,
+                    role=Role.LEGACY_PROVIDER,
+                    state=TxState.ANNOUNCED,
+                    first_seen=self._simulator.current_time,
+                )
+                pending.provider_peers.add(sender)
+                self._pending_txs[tx_hash] = pending
+                legacy_fetch_hashes.append(tx_hash)
                 continue
 
             # New transaction - determine our role
@@ -286,6 +337,9 @@ class Node(Actor):
                     pending.state = TxState.AWAITING_PROVIDERS
                     self._schedule_provider_observation_timeout(tx_hash)
 
+        if legacy_fetch_hashes:
+            self._start_legacy_fetch(legacy_fetch_hashes, sender)
+
     def _start_provider_fetch(self, tx_hash: TxHash, from_peer: ActorId) -> None:
         pending = self._pending_txs.get(tx_hash)
         if pending is None:
@@ -296,6 +350,19 @@ class Node(Actor):
         # Request transaction body
         request_id = self._allocate_request_id()
         self._send_get_transactions(tx_hash, from_peer, request_id)
+
+    def _start_legacy_fetch(self, tx_hashes: list[TxHash], from_peer: ActorId) -> None:
+        request_hashes = [tx_hash for tx_hash in tx_hashes if tx_hash in self._pending_txs]
+        if not request_hashes:
+            return
+
+        request_id = self._allocate_request_id()
+        for tx_hash in request_hashes:
+            pending = self._pending_txs[tx_hash]
+            pending.role = Role.LEGACY_PROVIDER
+            pending.state = TxState.FETCHING_TX
+
+        self._send_get_transactions(request_hashes, from_peer, request_id)
 
     def _start_sampler_fetch(self, tx_hash: TxHash) -> None:
         pending = self._pending_txs.get(tx_hash)
@@ -313,22 +380,25 @@ class Node(Actor):
         self._send_get_transactions(tx_hash, target, request_id)
 
     def _send_get_transactions(
-        self, tx_hash: TxHash, to_peer: ActorId, request_id: RequestId
+        self, tx_hash: TxHash | list[TxHash], to_peer: ActorId, request_id: RequestId
     ) -> None:
-        pending = self._pending_txs.get(tx_hash)
-        if pending is None:
+        tx_hashes = [tx_hash] if not isinstance(tx_hash, list) else tx_hash
+        request_hashes = [hash_ for hash_ in tx_hashes if hash_ in self._pending_txs]
+        if not request_hashes:
             return
 
-        pending.pending_request_id = request_id
+        for hash_ in request_hashes:
+            self._pending_txs[hash_].pending_request_id = request_id
+
         self._pending_requests[request_id] = PendingRequest(
             request_id=request_id,
-            tx_hash=tx_hash,
+            tx_hashes=request_hashes,
             target_peer=to_peer,
             request_type="tx",
             sent_at=self._simulator.current_time,
         )
 
-        msg = GetPooledTransactions(sender=self._id, tx_hashes=[tx_hash])
+        msg = GetPooledTransactions(sender=self._id, tx_hashes=request_hashes)
         self.send(msg, to_peer)
         self._schedule_request_timeout(request_id)
 
@@ -336,13 +406,17 @@ class Node(Actor):
         from sparse_blobpool.protocol.messages import PooledTransactions, TxBody
 
         transactions: list[TxBody | None] = []
+        legacy_response = self.negotiated_protocol(msg.sender) == EthProtocol.ETH70
 
         for tx_hash in msg.tx_hashes:
             entry = self._pool.get(tx_hash)
             if entry is not None:
-                # Approximate elided wrapper size: 300 bytes base + 96 bytes per blob
-                elided_size = 300 + (entry.blob_count * 96)
-                transactions.append(TxBody(tx_hash=entry.tx_hash, tx_bytes=elided_size))
+                if legacy_response:
+                    tx_bytes = full_blob_tx_size(entry.tx_size, entry.blob_count)
+                else:
+                    # Approximate elided wrapper size: 300 bytes base + 96 bytes per blob
+                    tx_bytes = 300 + (entry.blob_count * 96)
+                transactions.append(TxBody(tx_hash=entry.tx_hash, tx_bytes=tx_bytes))
             else:
                 transactions.append(None)
 
@@ -366,6 +440,10 @@ class Node(Actor):
 
             pending.tx_body_received = True
 
+            if pending.role == Role.LEGACY_PROVIDER:
+                self._complete_tx(tx_hash, ALL_ONES)
+                continue
+
             # Now fetch cells
             if pending.role == Role.PROVIDER:
                 self._request_all_cells(tx_hash, msg.sender)
@@ -383,7 +461,7 @@ class Node(Actor):
         pending.pending_request_id = request_id
         self._pending_requests[request_id] = PendingRequest(
             request_id=request_id,
-            tx_hash=tx_hash,
+            tx_hashes=[tx_hash],
             target_peer=from_peer,
             request_type="cells",
             sent_at=self._simulator.current_time,
@@ -408,7 +486,7 @@ class Node(Actor):
         pending.pending_request_id = request_id
         self._pending_requests[request_id] = PendingRequest(
             request_id=request_id,
-            tx_hash=tx_hash,
+            tx_hashes=[tx_hash],
             target_peer=from_peer,
             request_type="cells",
             sent_at=self._simulator.current_time,
@@ -433,6 +511,9 @@ class Node(Actor):
 
     def _handle_get_cells(self, msg: GetCells) -> None:
         from sparse_blobpool.protocol.messages import Cell, Cells
+
+        if EthProtocol.ETH71 not in self._protocols:
+            return
 
         cells_response: list[list[Cell | None]] = []
 
@@ -471,6 +552,9 @@ class Node(Actor):
         self.send(response, msg.sender)
 
     def _handle_cells(self, msg: Cells) -> None:
+        if EthProtocol.ETH71 not in self._protocols:
+            return
+
         for tx_hash in msg.tx_hashes:
             pending = self._pending_txs.get(tx_hash)
             if pending is None:
@@ -532,15 +616,21 @@ class Node(Actor):
             if peer in entry.announced_to:
                 continue
 
-            # Announcements should not advertise the full blob size for Type-3 txs.
-            # Keep announcements lightweight by sending the elided wrapper size.
-            elided_size = 300 + (entry.blob_count * 96)
+            protocol = self.negotiated_protocol(peer)
+            is_legacy = protocol == EthProtocol.ETH70
+            # eth/71 announcements advertise availability with cell_mask and an elided wrapper
+            # size. eth/70 announcements omit cell_mask and rely on full tx fetches.
+            announced_size = (
+                full_blob_tx_size(entry.tx_size, entry.blob_count)
+                if is_legacy
+                else 300 + (entry.blob_count * 96)
+            )
             msg = NewPooledTransactionHashes(
                 sender=self._id,
                 types=bytes([3]),
-                sizes=[elided_size],
+                sizes=[announced_size],
                 hashes=[entry.tx_hash],
-                cell_mask=entry.cell_mask,
+                cell_mask=None if is_legacy else entry.cell_mask,
             )
             self.send(msg, peer)
             entry.announced_to.add(peer)
@@ -578,7 +668,7 @@ class Node(Actor):
         if request is None:
             return  # Already completed
 
-        pending = self._pending_txs.get(request.tx_hash)
+        pending = self._pending_txs.get(request.tx_hashes[0]) if request.tx_hashes else None
         if pending is None:
             return
 
@@ -590,13 +680,15 @@ class Node(Actor):
             new_peer = self._pick_peer(other_peers)
             if new_peer is not None:
                 new_request_id = self._allocate_request_id()
-                self._send_get_transactions(request.tx_hash, new_peer, new_request_id)
+                self._send_get_transactions(request.tx_hashes, new_peer, new_request_id)
             else:
                 # No more peers, give up
-                self._pending_txs.pop(request.tx_hash, None)
+                for tx_hash in request.tx_hashes:
+                    self._pending_txs.pop(tx_hash, None)
         else:
             # Cell request timeout - try another peer or give up
-            self._pending_txs.pop(request.tx_hash, None)
+            for tx_hash in request.tx_hashes:
+                self._pending_txs.pop(tx_hash, None)
 
     def _handle_provider_observation_timeout(self, cmd: ProviderObservationTimeout) -> None:
         pending = self._pending_txs.get(cmd.tx_hash)
