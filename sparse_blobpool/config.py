@@ -27,7 +27,7 @@ class SimulationConfig:
 
     # Protocol parameters (EIP-8070)
     provider_probability: float = 0.15  # p
-    legacy_protocol_probability: float = 1.0  # Probability a node is eth/70-only
+    legacy_protocol_probability: float = 0.0  # Probability a node is eth/70-only
     min_providers_before_sample: int = 2
     extra_random_columns: int = 1  # C_extra
     max_columns_per_request: int = 8  # C_req
