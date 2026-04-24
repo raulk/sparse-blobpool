@@ -96,6 +96,17 @@ def main() -> None:
     print(f"Observed provider ratio: {metrics_results.observed_provider_ratio:.3f}")
     print(f"Reconstruction success rate: {metrics_results.reconstruction_success_rate * 100:.1f}%")
 
+    print("\n=== Bandwidth By Message Type ===")
+    total_bytes = metrics_results.total_bandwidth_bytes
+    for message_type, bytes_sent in sorted(
+        metrics_results.bytes_by_message_type.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    ):
+        count = metrics_results.message_count_by_type.get(message_type, 0)
+        pct = 100 * bytes_sent / total_bytes if total_bytes > 0 else 0.0
+        print(f"{message_type}: {bytes_sent / 1024 / 1024:.1f} MB ({pct:.1f}%, {count} messages)")
+
     print("\n=== Exporting to JSON ===")
     json_output = json.dumps(metrics_results.to_dict(), indent=2)
     print(json_output)

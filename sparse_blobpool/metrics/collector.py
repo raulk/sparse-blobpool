@@ -59,6 +59,8 @@ class MetricsCollector:
     bytes_received: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
     bytes_sent_control: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
     bytes_sent_data: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
+    bytes_by_message_type: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    message_count_by_type: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     # Country tracking
     node_countries: dict[ActorId, Country] = field(default_factory=dict)
@@ -113,10 +115,15 @@ class MetricsCollector:
         to: ActorId,
         size: int,
         is_control: bool = False,
+        message_type: str | None = None,
     ) -> None:
         self.bytes_sent[from_] += size
         self.bytes_received[to] += size
         self._total_bytes += size
+
+        if message_type is not None:
+            self.bytes_by_message_type[message_type] += size
+            self.message_count_by_type[message_type] += 1
 
         if is_control:
             self.bytes_sent_control[from_] += size
@@ -383,5 +390,7 @@ class MetricsCollector:
             propagation_timeseries=self.propagation_timeseries,
             bytes_sent_per_node=dict(self.bytes_sent),
             bytes_received_per_node=dict(self.bytes_received),
+            bytes_by_message_type=dict(self.bytes_by_message_type),
+            message_count_by_type=dict(self.message_count_by_type),
             column_coverage=self.column_coverage,
         )

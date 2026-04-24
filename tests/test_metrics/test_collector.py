@@ -25,14 +25,30 @@ class TestMetricsCollector:
         sim = Simulator()
         metrics = MetricsCollector(simulator=sim)
 
-        metrics.record_bandwidth(ActorId("a"), ActorId("b"), 1000, is_control=True)
-        metrics.record_bandwidth(ActorId("a"), ActorId("c"), 2000, is_control=False)
+        metrics.record_bandwidth(
+            ActorId("a"),
+            ActorId("b"),
+            1000,
+            is_control=True,
+            message_type="NewPooledTransactionHashes",
+        )
+        metrics.record_bandwidth(
+            ActorId("a"),
+            ActorId("c"),
+            2000,
+            is_control=False,
+            message_type="PooledTransactions",
+        )
 
         assert metrics.bytes_sent[ActorId("a")] == 3000
         assert metrics.bytes_received[ActorId("b")] == 1000
         assert metrics.bytes_received[ActorId("c")] == 2000
         assert metrics.bytes_sent_control[ActorId("a")] == 1000
         assert metrics.bytes_sent_data[ActorId("a")] == 2000
+        assert metrics.bytes_by_message_type["NewPooledTransactionHashes"] == 1000
+        assert metrics.bytes_by_message_type["PooledTransactions"] == 2000
+        assert metrics.message_count_by_type["NewPooledTransactionHashes"] == 1
+        assert metrics.message_count_by_type["PooledTransactions"] == 1
 
     def test_record_tx_seen_provider(self) -> None:
         sim = Simulator()
@@ -110,12 +126,14 @@ class TestMetricsCollector:
         for i in range(10):
             metrics.record_tx_seen(ActorId(f"node{i}"), tx_hash, Role.PROVIDER, ALL_ONES)
 
-        metrics.record_bandwidth(ActorId("a"), ActorId("b"), 1000)
+        metrics.record_bandwidth(ActorId("a"), ActorId("b"), 1000, message_type="Cells")
 
         results = metrics.finalize()
 
         assert results.total_bandwidth_bytes == 1000
         assert results.bandwidth_per_node == 100.0
+        assert results.bytes_by_message_type == {"Cells": 1000}
+        assert results.message_count_by_type == {"Cells": 1}
         assert results.propagation_success_rate == 1.0
         assert results.observed_provider_ratio == 1.0  # All providers
 
@@ -186,3 +204,5 @@ class TestSimulationResults:
         assert "observed_provider_ratio" in result_dict
         assert "legacy_full_fetch_ratio" in result_dict
         assert "full_data_coverage" in result_dict
+        assert "bytes_by_message_type" in result_dict
+        assert "message_count_by_type" in result_dict

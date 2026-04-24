@@ -72,6 +72,10 @@ class SimulationResults:
     bytes_sent_per_node: dict[ActorId, int] = field(default_factory=dict)
     bytes_received_per_node: dict[ActorId, int] = field(default_factory=dict)
 
+    # Per-message bandwidth breakdown
+    bytes_by_message_type: dict[str, int] = field(default_factory=dict)
+    message_count_by_type: dict[str, int] = field(default_factory=dict)
+
     # Column coverage: number of nodes custodying each column (128 values)
     column_coverage: list[int] = field(default_factory=list)
 
@@ -96,5 +100,7 @@ class SimulationResults:
             "spam_amplification_factor": self.spam_amplification_factor,
             "victim_blobpool_pollution": self.victim_blobpool_pollution,
             "withholding_detection_rate": self.withholding_detection_rate,
+            "bytes_by_message_type": self.bytes_by_message_type,
+            "message_count_by_type": self.message_count_by_type,
             "column_coverage": self.column_coverage,
         }
