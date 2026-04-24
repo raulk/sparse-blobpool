@@ -68,6 +68,7 @@ class PendingTx:
     state: TxState
     provider_peers: set[ActorId] = field(default_factory=set)
     sampler_peers: set[ActorId] = field(default_factory=set)
+    legacy_peers: set[ActorId] = field(default_factory=set)
     tx_body_received: bool = False
     cells_received: int = 0  # bitmap of received columns
     pending_request_id: RequestId | None = None
@@ -276,7 +277,7 @@ class Node(Actor):
                 pending = self._pending_txs[tx_hash]
 
                 if uses_legacy:
-                    pending.provider_peers.add(sender)
+                    pending.legacy_peers.add(sender)
                     if pending.state in {TxState.ANNOUNCED, TxState.AWAITING_PROVIDERS}:
                         pending.role = Role.LEGACY_PROVIDER
                         legacy_fetch_hashes.append(tx_hash)
@@ -303,7 +304,7 @@ class Node(Actor):
                     state=TxState.ANNOUNCED,
                     first_seen=self._simulator.current_time,
                 )
-                pending.provider_peers.add(sender)
+                pending.legacy_peers.add(sender)
                 self._pending_txs[tx_hash] = pending
                 legacy_fetch_hashes.append(tx_hash)
                 continue
@@ -417,6 +418,9 @@ class Node(Actor):
             entry = self._pool.get(tx_hash)
             if entry is not None:
                 if legacy_response:
+                    if not entry.has_full_availability:
+                        transactions.append(None)
+                        continue
                     tx_bytes = full_blob_tx_size(entry.tx_size, entry.blob_count)
                 else:
                     # Approximate elided wrapper size: 300 bytes base + 96 bytes per blob
@@ -627,6 +631,9 @@ class Node(Actor):
 
             protocol = self.negotiated_protocol(peer)
             is_legacy = protocol == EthProtocol.ETH70
+            if is_legacy and not entry.has_full_availability:
+                continue
+
             # eth/71 announcements advertise availability with cell_mask and an elided wrapper
             # size. eth/70 announcements omit cell_mask and rely on full tx fetches.
             announced_size = (

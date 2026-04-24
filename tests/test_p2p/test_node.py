@@ -653,6 +653,53 @@ class TestRequestHandling:
             8 + 500 + CELLS_PER_BLOB * CELL_SIZE + 700 + 3 * CELLS_PER_BLOB * CELL_SIZE
         )
 
+    def test_eth70_get_pooled_transactions_refuses_partial_blob(
+        self, node: Node, simulator: Simulator, network: Network
+    ) -> None:
+        """eth/70 full tx requests are refused when only partial cells are available."""
+        from sparse_blobpool.core.types import Address
+        from sparse_blobpool.pool.blobpool import BlobTxEntry
+
+        tx_hash = TxHash("0x" + "ab" * 32)
+        entry = BlobTxEntry(
+            tx_hash=tx_hash,
+            sender=Address("0x" + "11" * 20),
+            nonce=0,
+            gas_fee_cap=1000000000,
+            gas_tip_cap=100000000,
+            blob_gas_price=1000000,
+            tx_size=500,
+            blob_count=1,
+            cell_mask=node.custody_mask,
+            received_at=0.0,
+        )
+        node.pool.add(entry)
+
+        from sparse_blobpool.core.actor import Actor, EventPayload
+
+        class ResponseRecorder(Actor):
+            def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
+                super().__init__(actor_id, sim)
+                self.received: list[EventPayload] = []
+
+            def on_event(self, payload: EventPayload) -> None:
+                self.received.append(payload)
+
+        peer = ActorId("legacy-peer")
+        node.add_peer(peer, EthProtocol.ETH70)
+        peer_actor = ResponseRecorder(peer, simulator)
+        simulator.register_actor(peer_actor)
+        network.register_node(peer, "united states")
+
+        request = GetPooledTransactions(sender=peer, tx_hashes=[tx_hash])
+        node.on_event(request)
+        simulator.run(until=1.0)
+
+        responses = [m for m in peer_actor.received if isinstance(m, PooledTransactions)]
+        assert len(responses) == 1
+        assert responses[0].transactions == [None]
+        assert responses[0].size_bytes == 8
+
     def test_get_cells_returns_available_cells(
         self, node: Node, simulator: Simulator, network: Network
     ) -> None:
@@ -856,3 +903,66 @@ class TestAnnouncement:
         assert sparse_msg.sizes == [300 + 2 * 96]
         assert legacy_msg.cell_mask is None
         assert legacy_msg.sizes == [500 + 2 * CELLS_PER_BLOB * CELL_SIZE]
+
+    def test_partial_tx_not_announced_to_legacy_peer(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
+    ) -> None:
+        """Samplers advertise partial availability only to eth/71 peers."""
+        node = Node(ActorId("test-node"), simulator, config, custody_columns=8, metrics=metrics)
+        simulator.register_actor(node)
+        network.register_node(node.id, "united states")
+
+        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.types import Address
+        from sparse_blobpool.pool.blobpool import BlobTxEntry
+
+        class AnnouncementRecorder(Actor):
+            def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
+                super().__init__(actor_id, sim)
+                self.received: list[EventPayload] = []
+
+            def on_event(self, payload: EventPayload) -> None:
+                self.received.append(payload)
+
+        sparse_peer = ActorId("sparse-peer")
+        legacy_peer = ActorId("legacy-peer")
+        sparse_actor = AnnouncementRecorder(sparse_peer, simulator)
+        legacy_actor = AnnouncementRecorder(legacy_peer, simulator)
+        simulator.register_actor(sparse_actor)
+        simulator.register_actor(legacy_actor)
+        network.register_node(sparse_peer, "united states")
+        network.register_node(legacy_peer, "united states")
+        node.add_peer(sparse_peer, EthProtocol.ETH71)
+        node.add_peer(legacy_peer, EthProtocol.ETH70)
+
+        tx_hash = TxHash("0x" + "ef" * 32)
+        entry = BlobTxEntry(
+            tx_hash=tx_hash,
+            sender=Address("0x" + "11" * 20),
+            nonce=0,
+            gas_fee_cap=1000000000,
+            gas_tip_cap=100000000,
+            blob_gas_price=1000000,
+            tx_size=500,
+            blob_count=1,
+            cell_mask=node.custody_mask,
+            received_at=0.0,
+        )
+        node.pool.add(entry)
+        node._announce_tx(entry)
+        simulator.run(until=1.0)
+
+        sparse_announcements = [
+            m for m in sparse_actor.received if isinstance(m, NewPooledTransactionHashes)
+        ]
+        legacy_announcements = [
+            m for m in legacy_actor.received if isinstance(m, NewPooledTransactionHashes)
+        ]
+
+        assert len(sparse_announcements) == 1
+        assert sparse_announcements[0].cell_mask == node.custody_mask
+        assert legacy_announcements == []
