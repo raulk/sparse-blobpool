@@ -80,7 +80,8 @@ class TestBroadcastTransaction:
 
         sim.run(5.0)
 
-        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
+        tx_metrics = sim.metrics.tx_metrics.get(tx_hash)
+        nodes_with_tx = len(tx_metrics.nodes_seen) if tx_metrics is not None else 0
 
         assert nodes_with_tx > len(sim.nodes) * 0.5
 
@@ -99,7 +100,8 @@ class TestPropagation:
 
         sim.run(15.0)
 
-        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
+        tx_metrics = sim.metrics.tx_metrics.get(tx_hash)
+        nodes_with_tx = len(tx_metrics.nodes_seen) if tx_metrics is not None else 0
         propagation_pct = 100 * nodes_with_tx / len(sim.nodes)
 
         assert propagation_pct > 80, f"Only reached {propagation_pct:.1f}%"
@@ -165,7 +167,8 @@ class TestLargeScale:
 
         sim.run(10.0)
 
-        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
+        tx_metrics = sim.metrics.tx_metrics.get(tx_hash)
+        nodes_with_tx = len(tx_metrics.nodes_seen) if tx_metrics is not None else 0
         propagation_pct = 100 * nodes_with_tx / len(sim.nodes)
 
         assert propagation_pct > 99, f"Only reached {propagation_pct:.1f}% (target: >99%)"

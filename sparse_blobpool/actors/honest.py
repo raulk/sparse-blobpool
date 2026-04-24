@@ -109,6 +109,8 @@ class Node(Actor):
         self._pending_txs: dict[TxHash, PendingTx] = {}
         self._pending_requests: dict[RequestId, PendingRequest] = {}
         self._next_request_id: int = 0
+        self._included_txs: set[TxHash] = set()
+        self._seen_blocks: set[tuple[int, ActorId]] = set()
 
         # Custody column assignment (deterministic from node ID)
         self._custody_mask = self._compute_custody_mask()
@@ -225,6 +227,9 @@ class Node(Actor):
         sender = msg.sender
 
         for i, tx_hash in enumerate(msg.hashes):
+            if tx_hash in self._included_txs:
+                continue
+
             tx_type = msg.types[i] if i < len(msg.types) else 0
 
             # Skip non-blob transactions
@@ -494,6 +499,10 @@ class Node(Actor):
                     self._complete_tx(tx_hash, pending.cells_received)
 
     def _complete_tx(self, tx_hash: TxHash, cell_mask: int) -> None:
+        if tx_hash in self._included_txs:
+            self._pending_txs.pop(tx_hash, None)
+            return
+
         pending = self._pending_txs.pop(tx_hash, None)
         if pending is None:
             return
@@ -619,11 +628,22 @@ class Node(Actor):
             self._pending_txs.pop(cmd.tx_hash, None)
 
     def _handle_block_announcement(self, msg: BlockBroadcast) -> None:
+        block_key = (msg.block.slot, msg.block.proposer)
+        if block_key in self._seen_blocks:
+            return
+        self._seen_blocks.add(block_key)
+
+        for peer in sorted(self._peers):
+            if peer != msg.sender:
+                self.send(msg, peer)
+
         # Perform DA check: do we have the required data for all txs in this block?
         da_passed = self._check_block_da(msg.block.blob_tx_hashes)
         self._metrics.record_da_check(da_passed)
 
         for tx_hash in msg.block.blob_tx_hashes:
+            self._included_txs.add(tx_hash)
+
             # Remove from pending if still there
             self._pending_txs.pop(tx_hash, None)
 
@@ -675,9 +695,6 @@ class Node(Actor):
 
         announcement = BlockBroadcast(sender=self._id, block=block)
 
-        for peer in sorted(self._peers):
-            self.send(announcement, peer)
-
         # If the simulator exposes a BlockProducer with diagnostic counters,
         # increment them so scenarios can report counts without additional wiring.
         try:
@@ -692,7 +709,11 @@ class Node(Actor):
         self._handle_block_announcement(announcement)
 
     def _select_blobs_for_block(self) -> list[BlobTxEntry]:
-        candidates = [tx for tx in self._pool.iter_by_priority() if self._is_includable(tx)]
+        candidates = [
+            tx
+            for tx in self._pool.iter_by_priority()
+            if tx.tx_hash not in self._included_txs and self._is_includable(tx)
+        ]
 
         selected: list[BlobTxEntry] = []
         blob_count = 0
