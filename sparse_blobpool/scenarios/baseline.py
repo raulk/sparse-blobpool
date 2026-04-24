@@ -73,17 +73,20 @@ def main() -> None:
     print(f"Events processed: {sim.events_processed}")
     print(f"Messages delivered: {sim.network.messages_delivered}")
     print(f"Total bytes transmitted: {sim.network.total_bytes / 1024 / 1024:.1f} MB")
-    print(f"Blocks produced: {sim.block_producer.blocks_produced}")
+    print(f"Total Blocks Produced: {sim.block_producer.total_blocks_produced}")
+    print(f"Non-empty Blocks Produced: {sim.block_producer.blocks_produced}")
     print(f"Blobs included: {sim.block_producer.total_blobs_included}")
 
+    metrics_results = sim.finalize_metrics()
+
     print("\n=== Transaction Propagation ===")
-    for tx_hash in tx_hashes[:3]:
-        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
-        pct = 100 * nodes_with_tx / len(sim.nodes)
-        print(f"{tx_hash[:16]}...: {nodes_with_tx}/{len(sim.nodes)} nodes ({pct:.1f}%)")
+    for tx_hash in tx_hashes:
+        tx_metrics = sim.metrics.tx_metrics.get(tx_hash)
+        nodes_seen = len(tx_metrics.nodes_seen) if tx_metrics is not None else 0
+        pct = 100 * nodes_seen / len(sim.nodes)
+        print(f"{tx_hash[:16]}...: {nodes_seen}/{len(sim.nodes)} nodes ({pct:.1f}%)")
 
     print("\n=== Metrics Analysis ===")
-    metrics_results = sim.finalize_metrics()
     print(f"Total bandwidth: {metrics_results.total_bandwidth_bytes / 1024 / 1024:.1f} MB")
     print(f"Bandwidth per blob: {metrics_results.bandwidth_per_blob / 1024:.1f} KB")
     print(f"Bandwidth reduction vs full: {metrics_results.bandwidth_reduction_vs_full:.2f}x")

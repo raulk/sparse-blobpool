@@ -151,6 +151,25 @@ class TestSlotTicking:
 
         assert simulator.pending_event_count() > 0
 
+    def test_total_blocks_produced_counts_slot_attempts(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+    ) -> None:
+        """Total blocks produced counts slot-based proposer selections."""
+        from sparse_blobpool.actors.block_producer import BlockProducer
+
+        create_node(simulator, network, config, "node-1")
+        bp = BlockProducer(simulator, config=config)
+        simulator.register_actor(bp)
+
+        bp.start()
+        simulator.run(until=2 * config.slot_duration + 0.1)
+
+        assert bp.total_blocks_produced == 2
+        assert bp.blocks_produced == 0
+
 
 class TestProposerSelection:
     def test_proposer_rotates_through_nodes(
@@ -230,11 +249,10 @@ class TestBlobSelection:
             node.pool.add(tx)
 
         bp.start()
-        simulator.run(until=limited_config.slot_duration + 3.0)
+        simulator.run(until=limited_config.slot_duration + 0.5)
 
-        # Only 2 txs should be included per block (highest tips first)
-        # After one block, 3 txs should remain
-        assert node.pool.tx_count == 3
+        # Only 2 txs should be marked included in the first block.
+        assert len(node._included_txs) == 2
 
     def test_multi_blob_transactions_count_correctly(
         self,
@@ -258,11 +276,11 @@ class TestBlobSelection:
         node.pool.add(tx_2blob)
 
         bp.start()
-        simulator.run(until=limited_config.slot_duration + 3.0)
+        simulator.run(until=limited_config.slot_duration + 0.5)
 
         # Only 3-blob tx should fit (3 <= 4, but 3+2 > 4)
-        assert not node.pool.contains(tx_3blob.tx_hash)
-        assert node.pool.contains(tx_2blob.tx_hash)
+        assert tx_3blob.tx_hash in node._included_txs
+        assert tx_2blob.tx_hash not in node._included_txs
 
 
 class TestInclusionPolicies:
@@ -373,6 +391,34 @@ class TestBlockBroadcast:
 
         assert bp.current_slot == 1
 
+    def test_block_announcement_rebroadcast_reaches_indirect_peers(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+    ) -> None:
+        """Block announcements should propagate beyond the proposer's direct peers."""
+        from sparse_blobpool.actors.block_producer import BlockProducer
+
+        nodes = [create_node(simulator, network, config, f"node-{i}") for i in range(3)]
+
+        # Build a line topology: node-0 <-> node-1 <-> node-2
+        nodes[0].add_peer(nodes[1].id)
+        nodes[1].add_peer(nodes[0].id)
+        nodes[1].add_peer(nodes[2].id)
+        nodes[2].add_peer(nodes[1].id)
+
+        bp = BlockProducer(simulator, config=config)
+        simulator.register_actor(bp)
+
+        tx = create_blob_tx("0x" + "cc" * 32, "0x" + "33" * 20)
+        nodes[0].pool.add(tx)
+
+        bp.start()
+        simulator.run(until=config.slot_duration + 3.0)
+
+        assert tx.tx_hash in nodes[2]._included_txs
+
 
 class TestNodeBlockHandling:
     def test_included_tx_removed_after_cleanup_delay(
@@ -442,3 +488,32 @@ class TestNodeBlockHandling:
 
         # Pending should be removed from node2
         assert tx.tx_hash not in node2._pending_txs
+
+    def test_block_announcement_prevents_reinclusion_in_later_slot(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+    ) -> None:
+        """A later proposer should not re-include a tx after hearing the earlier block."""
+        from sparse_blobpool.actors.block_producer import BlockProducer
+
+        node0 = create_node(simulator, network, config, "node-0")
+        node1 = create_node(simulator, network, config, "node-1")
+
+        node0.add_peer(node1.id)
+        node1.add_peer(node0.id)
+
+        bp = BlockProducer(simulator, config=config)
+        simulator.register_actor(bp)
+        simulator._block_producer = bp
+
+        tx = create_blob_tx("0x" + "dd" * 32, "0x" + "44" * 20)
+        node0.pool.add(tx)
+        node1.pool.add(create_blob_tx(str(tx.tx_hash), "0x" + "44" * 20))
+
+        bp.start()
+        simulator.run(until=(2 * config.slot_duration) + 0.5)
+
+        assert bp.blocks_produced == 1
+        assert tx.tx_hash in node1._included_txs
