@@ -36,6 +36,8 @@ class TxMetrics:
     provider_count: int = 0
     sampler_count: int = 0
     legacy_provider_count: int = 0
+    sampler_eth71_count: int = 0   # Samplers that fetched via eth/71
+    sampler_fallback_count: int = 0  # Samplers that fell back to eth/70
     nodes_seen: set[ActorId] = field(default_factory=set)
     cell_masks: dict[ActorId, int] = field(default_factory=dict)  # Node -> cell_mask
     included_at_slot: int | None = None
@@ -88,6 +90,10 @@ class MetricsCollector:
     victim_attacks: dict[ActorId, dict[str, list[TxHash]]] = field(
         default_factory=lambda: defaultdict(lambda: defaultdict(list))
     )  # victim -> attack_type -> tx_hashes
+
+    # Sampler outcome tracking (eth/71 success vs eth/70 fallback)
+    sampler_eth71_success: int = 0
+    sampler_legacy_fallback: int = 0
 
     # DA check tracking (per block per node)
     da_checks_passed: int = 0
@@ -198,6 +204,25 @@ class MetricsCollector:
         if passed:
             self.da_checks_passed += 1
 
+    def record_sampler_outcome(self, tx_hash: TxHash, *, via_eth71: bool) -> None:
+        """Record whether a sampler node fetched via eth/71 or fell back to eth/70.
+
+        Args:
+            tx_hash: The transaction hash being tracked.
+            via_eth71: True if the sampler completed the fetch via eth/71 sparse cells;
+                       False if it fell back to a full eth/70 PooledTransactions fetch.
+        """
+        if tx_hash not in self.tx_metrics:
+            return  # tx_metrics entry should exist by this point, but be defensive
+
+        metrics = self.tx_metrics[tx_hash]
+        if via_eth71:
+            metrics.sampler_eth71_count += 1
+            self.sampler_eth71_success += 1
+        else:
+            metrics.sampler_fallback_count += 1
+            self.sampler_legacy_fallback += 1
+
     def snapshot(self) -> None:
         """Called periodically to build bandwidth/propagation timeseries."""
         current_time = self.simulator.current_time
@@ -307,6 +332,14 @@ class MetricsCollector:
         full_fetches = total_providers + total_legacy_providers
         legacy_full_fetch_ratio = total_legacy_providers / full_fetches if full_fetches > 0 else 0.0
 
+        # Sampling success rate: fraction of original-sampler completions that used eth/71
+        total_sampler_outcomes = self.sampler_eth71_success + self.sampler_legacy_fallback
+        sampling_success_rate = (
+            self.sampler_eth71_success / total_sampler_outcomes
+            if total_sampler_outcomes > 0
+            else 0.0
+        )
+
         # Local availability met: fraction of nodes meeting local availability
         # Providers need full blob (ALL_ONES), samplers need custody columns
         local_availability_count = 0
@@ -373,6 +406,7 @@ class MetricsCollector:
             expected_provider_coverage=self.expected_provider_probability,
             legacy_full_fetch_ratio=legacy_full_fetch_ratio,
             full_data_coverage=full_data_coverage,
+            sampling_success_rate=sampling_success_rate,
             local_availability_met=local_availability_met,
             da_checks_passed_rate=da_checks_passed_rate,
             # Attack outcomes

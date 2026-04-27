@@ -684,6 +684,135 @@ class TestResponseHandling:
             assert node.pool.get(tx_hash).cell_mask == ALL_ONES  # type: ignore[union-attr]
             assert node._metrics.tx_metrics[tx_hash].legacy_provider_count == 1
 
+    def test_sampler_eth71_success_recorded(
+        self, node: Node, simulator: Simulator, network: Network, metrics: MetricsCollector
+    ) -> None:
+        """Sampler completing via eth/71 cells increments sampler_eth71_success."""
+        from sparse_blobpool.actors.honest import PendingTx
+        from sparse_blobpool.protocol.messages import Cell
+
+        peer = ActorId("eth71-peer")
+        node.add_peer(peer)
+
+        # Find a tx_hash where this node is a SAMPLER
+        tx_hash: TxHash | None = None
+        for i in range(1000):
+            candidate = TxHash("0x" + f"{i:064x}"[::-1])
+            if node._determine_role(candidate) == Role.SAMPLER:
+                tx_hash = candidate
+                break
+        assert tx_hash is not None, "Could not find a SAMPLER tx_hash"
+
+        custody_mask = node._custody_mask
+        pending = PendingTx(
+            tx_hash=tx_hash,
+            role=Role.SAMPLER,
+            state=TxState.FETCHING_CELLS,
+            first_seen=0.0,
+            original_role=Role.SAMPLER,
+        )
+        pending.provider_peers.add(peer)
+        pending.tx_body_received = True
+        node._pending_txs[tx_hash] = pending
+
+        # Seed tx_metrics so record_sampler_outcome can find the entry
+        from sparse_blobpool.metrics.collector import TxMetrics
+        metrics.tx_metrics[tx_hash] = TxMetrics(first_seen_time=0.0, first_seen_node=node.id)
+
+        # Deliver custody cells via eth/71
+        cells_response = Cells(
+            sender=peer,
+            tx_hashes=[tx_hash],
+            cells=[[]],
+            cell_mask=custody_mask,
+        )
+        node.on_event(cells_response)
+
+        # Sampler completed via eth/71 → success counter incremented
+        assert metrics.sampler_eth71_success == 1
+        assert metrics.sampler_legacy_fallback == 0
+        assert metrics.tx_metrics[tx_hash].sampler_eth71_count == 1
+        assert metrics.tx_metrics[tx_hash].sampler_fallback_count == 0
+
+    def test_sampler_legacy_fallback_recorded(
+        self, node: Node, simulator: Simulator, network: Network, metrics: MetricsCollector
+    ) -> None:
+        """Sampler that fell back to eth/70 increments sampler_legacy_fallback."""
+        from sparse_blobpool.actors.honest import PendingTx
+
+        peer = ActorId("legacy-fallback-peer")
+        node.add_peer(peer, EthProtocol.ETH70)
+
+        # Find a tx_hash where this node is a SAMPLER
+        tx_hash: TxHash | None = None
+        for i in range(1000):
+            candidate = TxHash("0x" + f"{i:064x}"[::-1])
+            if node._determine_role(candidate) == Role.SAMPLER:
+                tx_hash = candidate
+                break
+        assert tx_hash is not None, "Could not find a SAMPLER tx_hash"
+
+        # Simulate a sampler that has been overridden to LEGACY_PROVIDER via fallback
+        pending = PendingTx(
+            tx_hash=tx_hash,
+            role=Role.LEGACY_PROVIDER,        # overridden by fallback
+            state=TxState.FETCHING_TX,
+            first_seen=0.0,
+            original_role=Role.SAMPLER,       # preserved original intent
+        )
+        pending.legacy_peers.add(peer)
+        node._pending_txs[tx_hash] = pending
+
+        # Seed tx_metrics
+        from sparse_blobpool.metrics.collector import TxMetrics
+        metrics.tx_metrics[tx_hash] = TxMetrics(first_seen_time=0.0, first_seen_node=node.id)
+
+        # Deliver full tx body (eth/70 path)
+        from sparse_blobpool.protocol.messages import TxBody
+        response = PooledTransactions(
+            sender=peer,
+            transactions=[TxBody(tx_hash=tx_hash, tx_bytes=131072)],
+        )
+        node.on_event(response)
+
+        # eth/70 LEGACY_PROVIDER completes immediately (no GetCells needed)
+        assert tx_hash not in node._pending_txs
+
+        # Sampler fell back → fallback counter incremented
+        assert metrics.sampler_eth71_success == 0
+        assert metrics.sampler_legacy_fallback == 1
+        assert metrics.tx_metrics[tx_hash].sampler_fallback_count == 1
+        assert metrics.tx_metrics[tx_hash].sampler_eth71_count == 0
+
+    def test_sampling_success_rate_in_finalize(
+        self, node: Node, simulator: Simulator, network: Network, metrics: MetricsCollector
+    ) -> None:
+        """sampling_success_rate = eth71_success / (eth71_success + fallback)."""
+        # Manually set counters on the collector
+        metrics.sampler_eth71_success = 7
+        metrics.sampler_legacy_fallback = 3
+
+        results = metrics.finalize()
+        assert results.sampling_success_rate == pytest.approx(0.7)
+
+    def test_sampling_success_rate_zero_when_no_samplers(
+        self, node: Node, simulator: Simulator, network: Network, metrics: MetricsCollector
+    ) -> None:
+        """sampling_success_rate is 0.0 when there are no sampler outcomes recorded."""
+        results = metrics.finalize()
+        assert results.sampling_success_rate == 0.0
+
+    def test_sampling_success_rate_in_to_dict(
+        self, node: Node, simulator: Simulator, network: Network, metrics: MetricsCollector
+    ) -> None:
+        """sampling_success_rate appears in SimulationResults.to_dict()."""
+        metrics.sampler_eth71_success = 4
+        metrics.sampler_legacy_fallback = 1
+        results = metrics.finalize()
+        d = results.to_dict()
+        assert "sampling_success_rate" in d
+        assert d["sampling_success_rate"] == pytest.approx(0.8)
+
 
 class TestRequestHandling:
     def test_get_pooled_transactions_returns_known_txs(

@@ -59,6 +59,9 @@ class SimulationResults:
     legacy_full_fetch_ratio: float = 0.0  # Full data fetches served through eth/70
     full_data_coverage: float = 0.0  # Fraction of observed node/tx pairs with full data
 
+    # Sampling quality metric
+    sampling_success_rate: float = 0.0  # % of sampler nodes that used eth/71 (vs eth/70 fallback)
+
     # Attack outcomes (populated when adversaries present)
     spam_amplification_factor: float = 0.0
     victim_blobpool_pollution: float = 0.0
@@ -100,6 +103,7 @@ class SimulationResults:
             "spam_amplification_factor": self.spam_amplification_factor,
             "victim_blobpool_pollution": self.victim_blobpool_pollution,
             "withholding_detection_rate": self.withholding_detection_rate,
+            "sampling_success_rate": self.sampling_success_rate,
             "bytes_by_message_type": self.bytes_by_message_type,
             "message_count_by_type": self.message_count_by_type,
             "column_coverage": self.column_coverage,

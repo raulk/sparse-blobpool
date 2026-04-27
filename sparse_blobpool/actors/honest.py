@@ -73,6 +73,10 @@ class PendingTx:
     cells_received: int = 0  # bitmap of received columns
     pending_request_id: RequestId | None = None
     first_seen: float = 0.0
+    # Role assigned by _determine_role; role may be later overridden to
+    # LEGACY_PROVIDER on fallback, so we preserve the original to track
+    # whether a sampler succeeded via eth/71 or fell back to eth/70.
+    original_role: Role | None = None
 
 
 @dataclass
@@ -323,6 +327,7 @@ class Node(Actor):
                         role=Role.SAMPLER,
                         state=TxState.AWAITING_PROVIDERS,
                         first_seen=self._simulator.current_time,
+                        original_role=Role.SAMPLER,
                     )
                     pending.legacy_peers.add(sender)
                     self._pending_txs[tx_hash] = pending
@@ -334,6 +339,7 @@ class Node(Actor):
                     role=Role.LEGACY_PROVIDER,
                     state=TxState.ANNOUNCED,
                     first_seen=self._simulator.current_time,
+                    original_role=Role.LEGACY_PROVIDER,
                 )
                 pending.legacy_peers.add(sender)
                 self._pending_txs[tx_hash] = pending
@@ -348,6 +354,7 @@ class Node(Actor):
                 role=role,
                 state=TxState.ANNOUNCED,
                 first_seen=self._simulator.current_time,
+                original_role=role,
             )
 
             # Track announcing peer
@@ -633,6 +640,11 @@ class Node(Actor):
         pending = self._pending_txs.pop(tx_hash, None)
         if pending is None:
             return
+
+        # Record sampler outcome before further processing
+        if pending.original_role == Role.SAMPLER:
+            via_eth71 = pending.role == Role.SAMPLER  # False if fell back to LEGACY_PROVIDER
+            self._metrics.record_sampler_outcome(tx_hash, via_eth71=via_eth71)
 
         # Create pool entry (we don't have full tx metadata in this sim,
         # so we create a minimal entry)
