@@ -278,6 +278,19 @@ class Node(Actor):
 
                 if uses_legacy:
                     pending.legacy_peers.add(sender)
+                    if pending.role == Role.SAMPLER:
+                        # Legacy peers count toward min_providers_before_sample so
+                        # samplers don't have to wait for multiple eth/71 announcements
+                        # when legacy nodes have already confirmed availability.
+                        # We still need at least one eth/71 provider peer to actually
+                        # perform the sparse cell fetch.
+                        if (
+                            pending.state == TxState.AWAITING_PROVIDERS
+                            and pending.provider_peers
+                            and self._provider_count(pending) >= self._config.min_providers_before_sample
+                        ):
+                            self._start_sampler_fetch(tx_hash)
+                        continue
                     if pending.state in {TxState.ANNOUNCED, TxState.AWAITING_PROVIDERS}:
                         pending.role = Role.LEGACY_PROVIDER
                         legacy_fetch_hashes.append(tx_hash)
@@ -289,15 +302,33 @@ class Node(Actor):
                 else:
                     pending.sampler_peers.add(sender)
 
-                # If sampler awaiting providers and we now have enough, proceed
+                # If sampler awaiting providers and we now have enough, proceed.
+                # Legacy peers count toward the threshold alongside eth/71 providers.
                 if (
                     pending.state == TxState.AWAITING_PROVIDERS
-                    and len(pending.provider_peers) >= self._config.min_providers_before_sample
+                    and pending.provider_peers
+                    and self._provider_count(pending) >= self._config.min_providers_before_sample
                 ):
                     self._start_sampler_fetch(tx_hash)
                 continue
 
             if uses_legacy:
+                # Determine role first: samplers must not fetch full blobs via eth/70.
+                # Instead they register the legacy peer and wait for an eth/71
+                # announcement that advertises cell availability.
+                role = self._determine_role(tx_hash)
+                if role == Role.SAMPLER:
+                    pending = PendingTx(
+                        tx_hash=tx_hash,
+                        role=Role.SAMPLER,
+                        state=TxState.AWAITING_PROVIDERS,
+                        first_seen=self._simulator.current_time,
+                    )
+                    pending.legacy_peers.add(sender)
+                    self._pending_txs[tx_hash] = pending
+                    self._schedule_provider_observation_timeout(tx_hash)
+                    continue
+
                 pending = PendingTx(
                     tx_hash=tx_hash,
                     role=Role.LEGACY_PROVIDER,
@@ -518,6 +549,14 @@ class Node(Actor):
 
         return extra_mask
 
+    def _provider_count(self, pending: PendingTx) -> int:
+        """Number of peers that have confirmed full availability for this tx.
+
+        Counts both eth/71 provider peers (cell_mask == ALL_ONES) and legacy
+        eth/70 peers, since both signal that the full blob is available.
+        """
+        return len(pending.provider_peers) + len(pending.legacy_peers)
+
     def _handle_get_cells(self, msg: GetCells) -> None:
         from sparse_blobpool.protocol.messages import Cell, Cells
 
@@ -722,8 +761,16 @@ class Node(Actor):
                     self._start_provider_fetch(cmd.tx_hash, target)
             else:
                 self._start_sampler_fetch(cmd.tx_hash)
+        elif pending.legacy_peers:
+            # Sampler has waited but found no eth/71 peers: fall back to legacy to avoid
+            # network partition if all peers are legacy-only. A single legacy-only peer
+            # is better than nothing.
+            if pending.role == Role.SAMPLER:
+                legacy_peer = self._pick_peer(pending.legacy_peers)
+                if legacy_peer is not None:
+                    self._start_legacy_fetch([cmd.tx_hash], legacy_peer)
         else:
-            # No peers, drop the tx
+            # No peers at all, drop the tx
             self._pending_txs.pop(cmd.tx_hash, None)
 
     def _handle_block_announcement(self, msg: BlockBroadcast) -> None:

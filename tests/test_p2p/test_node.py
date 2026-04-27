@@ -376,6 +376,143 @@ class TestSamplerFlow:
         # Now should be fetching
         assert pending.state == TxState.FETCHING_TX
 
+    def test_sampler_ignores_legacy_announcement(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
+    ) -> None:
+        """A sampler must not fetch full blobs from legacy peers."""
+        from sparse_blobpool.core.actor import Actor, EventPayload
+
+        class RequestRecorder(Actor):
+            def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
+                super().__init__(actor_id, sim)
+                self.received: list[EventPayload] = []
+
+            def on_event(self, payload: EventPayload) -> None:
+                self.received.append(payload)
+
+        node = Node(ActorId("sampler-node"), simulator, config, custody_columns=8, metrics=metrics)
+        simulator.register_actor(node)
+        network.register_node(node.id, "united states")
+
+        # Find a tx_hash that makes this node a sampler.
+        for i in range(200):
+            tx_hash = TxHash(f"0x{i:064x}")
+            if node._determine_role(tx_hash) == Role.SAMPLER:
+                break
+        else:
+            pytest.skip("Could not find a sampler tx")
+
+        legacy_peer = ActorId("legacy-peer")
+        recorder = RequestRecorder(legacy_peer, simulator)
+        simulator.register_actor(recorder)
+        network.register_node(legacy_peer, "united states")
+        node.add_peer(legacy_peer, EthProtocol.ETH70)
+
+        msg = NewPooledTransactionHashes(
+            sender=legacy_peer,
+            types=bytes([3]),
+            sizes=[full_blob_tx_size(131072, 1)],
+            hashes=[tx_hash],
+            cell_mask=None,
+        )
+        node.on_event(msg)
+        simulator.run(until=1.0)
+
+        # Sampler stays in AWAITING_PROVIDERS, registers the legacy peer, and
+        # does not issue a GetPooledTransactions against it.
+        pending = node._pending_txs[tx_hash]
+        assert pending.role == Role.SAMPLER
+        assert pending.state == TxState.AWAITING_PROVIDERS
+        assert legacy_peer in pending.legacy_peers
+        assert not any(isinstance(m, GetPooledTransactions) for m in recorder.received)
+
+        # Once an eth/71 provider peer announces, sampler proceeds via eth/71.
+        eth71_peer = ActorId("eth71-peer")
+        eth71_recorder = RequestRecorder(eth71_peer, simulator)
+        simulator.register_actor(eth71_recorder)
+        network.register_node(eth71_peer, "united states")
+        node.add_peer(eth71_peer, EthProtocol.ETH71)
+
+        for _ in range(config.min_providers_before_sample):
+            provider = ActorId(f"eth71-{_}")
+            p_recorder = RequestRecorder(provider, simulator)
+            simulator.register_actor(p_recorder)
+            network.register_node(provider, "united states")
+            node.add_peer(provider, EthProtocol.ETH71)
+            node.on_event(
+                NewPooledTransactionHashes(
+                    sender=provider,
+                    types=bytes([3]),
+                    sizes=[131072],
+                    hashes=[tx_hash],
+                    cell_mask=ALL_ONES,
+                )
+            )
+
+        assert pending.state == TxState.FETCHING_TX
+
+    def test_legacy_peer_counts_toward_provider_threshold(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
+    ) -> None:
+        """One legacy + one eth/71 ALL_ONES peer should satisfy min_providers_before_sample=2."""
+        # config.min_providers_before_sample == 2
+        assert config.min_providers_before_sample == 2
+
+        node = Node(ActorId("sampler-node"), simulator, config, custody_columns=8, metrics=metrics)
+        simulator.register_actor(node)
+        network.register_node(node.id, "united states")
+
+        for i in range(200):
+            tx_hash = TxHash(f"0x{i:064x}")
+            if node._determine_role(tx_hash) == Role.SAMPLER:
+                break
+        else:
+            pytest.skip("Could not find a sampler tx")
+
+        # Step 1: legacy peer announces first
+        legacy_peer = ActorId("legacy-peer")
+        node.add_peer(legacy_peer, EthProtocol.ETH70)
+        node.on_event(
+            NewPooledTransactionHashes(
+                sender=legacy_peer,
+                types=bytes([3]),
+                sizes=[full_blob_tx_size(131072, 1)],
+                hashes=[tx_hash],
+                cell_mask=None,
+            )
+        )
+
+        pending = node._pending_txs[tx_hash]
+        assert pending.state == TxState.AWAITING_PROVIDERS, "Should wait after legacy-only"
+
+        # Step 2: one eth/71 provider peer announces — combined count reaches threshold
+        eth71_peer = ActorId("eth71-provider")
+        node.add_peer(eth71_peer, EthProtocol.ETH71)
+        node.on_event(
+            NewPooledTransactionHashes(
+                sender=eth71_peer,
+                types=bytes([3]),
+                sizes=[131072],
+                hashes=[tx_hash],
+                cell_mask=ALL_ONES,
+            )
+        )
+
+        # legacy(1) + eth71_provider(1) == 2 == min_providers_before_sample → fetch starts
+        assert pending.state == TxState.FETCHING_TX, (
+            "Should start fetching after legacy+eth71 provider reaches threshold"
+        )
+        # And the fetch must target the eth/71 peer, not the legacy peer
+        assert pending.pending_request_id is not None
+
 
 class TestResponseHandling:
     def test_pooled_transactions_response(
@@ -500,7 +637,20 @@ class TestResponseHandling:
         simulator.register_actor(peer_actor)
         network.register_node(peer, "united states")
 
-        tx_hashes = [TxHash("0x" + "ab" * 32), TxHash("0x" + "cd" * 32)]
+        # Samplers refuse legacy fetches, so pick hashes that yield PROVIDER role.
+        # Vary the high-order hex digits so the fake sender derived from tx_hash[:40]
+        # in _complete_tx stays distinct between the two transactions.
+        tx_hashes: list[TxHash] = []
+        seen_senders: set[str] = set()
+        i = 0
+        while len(tx_hashes) < 2:
+            body = f"{i:064x}"
+            candidate = TxHash("0x" + body[::-1])
+            sender_key = candidate[:40]
+            if node._determine_role(candidate) == Role.PROVIDER and sender_key not in seen_senders:
+                tx_hashes.append(candidate)
+                seen_senders.add(sender_key)
+            i += 1
         msg = NewPooledTransactionHashes(
             sender=peer,
             types=bytes([3, 3]),
