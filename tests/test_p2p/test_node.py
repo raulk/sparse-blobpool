@@ -689,7 +689,6 @@ class TestResponseHandling:
     ) -> None:
         """Sampler completing via eth/71 cells increments sampler_eth71_success."""
         from sparse_blobpool.actors.honest import PendingTx
-        from sparse_blobpool.protocol.messages import Cell
 
         peer = ActorId("eth71-peer")
         node.add_peer(peer)
@@ -717,6 +716,7 @@ class TestResponseHandling:
 
         # Seed tx_metrics so record_sampler_outcome can find the entry
         from sparse_blobpool.metrics.collector import TxMetrics
+
         metrics.tx_metrics[tx_hash] = TxMetrics(first_seen_time=0.0, first_seen_node=node.id)
 
         # Deliver custody cells via eth/71
@@ -755,20 +755,22 @@ class TestResponseHandling:
         # Simulate a sampler that has been overridden to LEGACY_PROVIDER via fallback
         pending = PendingTx(
             tx_hash=tx_hash,
-            role=Role.LEGACY_PROVIDER,        # overridden by fallback
+            role=Role.LEGACY_PROVIDER,  # overridden by fallback
             state=TxState.FETCHING_TX,
             first_seen=0.0,
-            original_role=Role.SAMPLER,       # preserved original intent
+            original_role=Role.SAMPLER,  # preserved original intent
         )
         pending.legacy_peers.add(peer)
         node._pending_txs[tx_hash] = pending
 
         # Seed tx_metrics
         from sparse_blobpool.metrics.collector import TxMetrics
+
         metrics.tx_metrics[tx_hash] = TxMetrics(first_seen_time=0.0, first_seen_node=node.id)
 
         # Deliver full tx body (eth/70 path)
         from sparse_blobpool.protocol.messages import TxBody
+
         response = PooledTransactions(
             sender=peer,
             transactions=[TxBody(tx_hash=tx_hash, tx_bytes=131072)],

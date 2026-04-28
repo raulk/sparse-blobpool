@@ -36,7 +36,7 @@ class TxMetrics:
     provider_count: int = 0
     sampler_count: int = 0
     legacy_provider_count: int = 0
-    sampler_eth71_count: int = 0   # Samplers that fetched via eth/71
+    sampler_eth71_count: int = 0  # Samplers that fetched via eth/71
     sampler_fallback_count: int = 0  # Samplers that fell back to eth/70
     nodes_seen: set[ActorId] = field(default_factory=set)
     cell_masks: dict[ActorId, int] = field(default_factory=dict)  # Node -> cell_mask

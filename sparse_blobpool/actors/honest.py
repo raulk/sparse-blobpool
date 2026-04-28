@@ -291,7 +291,8 @@ class Node(Actor):
                         if (
                             pending.state == TxState.AWAITING_PROVIDERS
                             and pending.provider_peers
-                            and self._provider_count(pending) >= self._config.min_providers_before_sample
+                            and self._provider_count(pending)
+                            >= self._config.min_providers_before_sample
                         ):
                             self._start_sampler_fetch(tx_hash)
                         continue
