@@ -389,6 +389,11 @@ class MetricsCollector:
             bandwidth_reduction_vs_full=bandwidth_reduction,
             # Propagation
             median_propagation_time=median(propagation_times) if propagation_times else 0.0,
+            p95_propagation_time=(
+                sorted(propagation_times)[int(len(propagation_times) * 0.95)]
+                if propagation_times
+                else 0.0
+            ),
             p99_propagation_time=(
                 sorted(propagation_times)[int(len(propagation_times) * 0.99)]
                 if propagation_times

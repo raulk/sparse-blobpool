@@ -39,6 +39,7 @@ class SimulationResults:
 
     # Propagation performance
     median_propagation_time: float
+    p95_propagation_time: float
     p99_propagation_time: float
     propagation_success_rate: float  # Fraction reaching 99% of network
 
@@ -89,6 +90,7 @@ class SimulationResults:
             "bandwidth_per_node": self.bandwidth_per_node,
             "bandwidth_reduction_vs_full": self.bandwidth_reduction_vs_full,
             "median_propagation_time": self.median_propagation_time,
+            "p95_propagation_time": self.p95_propagation_time,
             "p99_propagation_time": self.p99_propagation_time,
             "propagation_success_rate": self.propagation_success_rate,
             "observed_provider_ratio": self.observed_provider_ratio,
