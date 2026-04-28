@@ -677,13 +677,10 @@ class Node(Actor):
             pass  # Transaction rejected
 
     def _announce_tx(self, entry: BlobTxEntry) -> None:
-        for peer in sorted(self._peers):
-            if peer in entry.announced_to:
-                continue
-
+        for peer in self._select_announcement_peers(entry):
             protocol = self.negotiated_protocol(peer)
             is_legacy = protocol == EthProtocol.ETH70
-            if is_legacy and not entry.has_full_availability:
+            if peer in entry.announced_to:
                 continue
 
             # eth/71 announcements advertise availability with cell_mask and an elided wrapper
@@ -702,6 +699,23 @@ class Node(Actor):
             )
             self.send(msg, peer)
             entry.announced_to.add(peer)
+
+    def _select_announcement_peers(self, entry: BlobTxEntry) -> list[ActorId]:
+        eligible = [
+            peer
+            for peer in self._peers
+            if entry.has_full_availability
+            or self.negotiated_protocol(peer) != EthProtocol.ETH70
+        ]
+        ordered = sorted(eligible, key=lambda peer: self._announcement_peer_key(entry, peer))
+        limit = self._config.outbound_broadcast_peer_limit
+        if limit is None:
+            return ordered
+        return ordered[:limit]
+
+    def _announcement_peer_key(self, entry: BlobTxEntry, peer: ActorId) -> tuple[bytes, ActorId]:
+        material = f"{self._id}:{entry.tx_hash}:{peer}".encode()
+        return sha256(material).digest(), peer
 
     def _allocate_request_id(self) -> RequestId:
         from sparse_blobpool.core.types import RequestId

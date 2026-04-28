@@ -28,6 +28,7 @@ class TestSimulationConfig:
         # Network
         assert config.node_count == 2000
         assert config.mesh_degree == 50
+        assert config.outbound_broadcast_peer_limit == 16
         assert config.interconnection_policy == GEOGRAPHIC
 
         # Protocol (EIP-8070)
@@ -56,6 +57,7 @@ class TestSimulationConfig:
         config = SimulationConfig(
             node_count=100,
             mesh_degree=25,
+            outbound_broadcast_peer_limit=None,
             provider_probability=0.20,
             interconnection_policy=LATENCY_AWARE,
             seed=999,
@@ -63,9 +65,21 @@ class TestSimulationConfig:
 
         assert config.node_count == 100
         assert config.mesh_degree == 25
+        assert config.outbound_broadcast_peer_limit is None
         assert config.provider_probability == 0.20
         assert config.interconnection_policy == LATENCY_AWARE
         assert config.seed == 999
+
+    def test_outbound_broadcast_peer_limit_validation(self) -> None:
+        """Outbound broadcast peer limit must be positive or unlimited."""
+        SimulationConfig(outbound_broadcast_peer_limit=1)
+        SimulationConfig(outbound_broadcast_peer_limit=None)
+
+        with pytest.raises(ValueError, match="outbound_broadcast_peer_limit"):
+            SimulationConfig(outbound_broadcast_peer_limit=0)
+
+        with pytest.raises(ValueError, match="outbound_broadcast_peer_limit"):
+            SimulationConfig(outbound_broadcast_peer_limit=-1)
 
     def test_legacy_protocol_probability_validation(self) -> None:
         """Legacy protocol probability must be in [0, 1]."""

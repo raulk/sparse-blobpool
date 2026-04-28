@@ -4,10 +4,12 @@ import pytest
 
 from sparse_blobpool.actors.honest import Node, Role, TxState
 from sparse_blobpool.config import SimulationConfig
+from sparse_blobpool.core.actor import Actor, EventPayload
 from sparse_blobpool.core.network import Network
 from sparse_blobpool.core.simulator import Simulator
-from sparse_blobpool.core.types import ActorId, TxHash
+from sparse_blobpool.core.types import ActorId, Address, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
+from sparse_blobpool.pool.blobpool import BlobTxEntry
 from sparse_blobpool.protocol.constants import ALL_ONES, CELL_SIZE, CELLS_PER_BLOB
 from sparse_blobpool.protocol.messages import (
     Cells,
@@ -52,6 +54,15 @@ def network(simulator: Simulator, metrics: MetricsCollector) -> Network:
     net = Network(simulator, metrics)
     simulator._network = net
     return net
+
+
+class AnnouncementRecorder(Actor):
+    def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
+        super().__init__(actor_id, sim)
+        self.received: list[EventPayload] = []
+
+    def on_event(self, payload: EventPayload) -> None:
+        self.received.append(payload)
 
 
 @pytest.fixture
@@ -282,7 +293,7 @@ class TestProviderFlow:
         node.add_peer(peer)
 
         # Create peer actor to receive requests
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class RequestRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -384,7 +395,7 @@ class TestSamplerFlow:
         metrics: MetricsCollector,
     ) -> None:
         """A sampler must not fetch full blobs from legacy peers."""
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class RequestRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -623,7 +634,7 @@ class TestResponseHandling:
         peer = ActorId("legacy-peer")
         node.add_peer(peer, EthProtocol.ETH70)
 
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class RequestRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -840,7 +851,7 @@ class TestRequestHandling:
         node.pool.add(entry)
 
         # Create peer to receive response
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class ResponseRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -904,7 +915,7 @@ class TestRequestHandling:
         for entry in entries:
             node.pool.add(entry)
 
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class ResponseRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -956,7 +967,7 @@ class TestRequestHandling:
         )
         node.pool.add(entry)
 
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class ResponseRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -1003,7 +1014,7 @@ class TestRequestHandling:
         )
         node.pool.add(entry)
 
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class ResponseRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -1062,6 +1073,55 @@ class TestPeerManagement:
 
 
 class TestAnnouncement:
+    def _make_entry(
+        self,
+        tx_hash: TxHash | None = None,
+        cell_mask: int = ALL_ONES,
+        blob_count: int = 1,
+    ) -> BlobTxEntry:
+        if tx_hash is None:
+            tx_hash = TxHash("0x" + "cd" * 32)
+        return BlobTxEntry(
+            tx_hash=tx_hash,
+            sender=Address("0x" + "11" * 20),
+            nonce=0,
+            gas_fee_cap=1000000000,
+            gas_tip_cap=100000000,
+            blob_gas_price=1000000,
+            tx_size=131072,
+            blob_count=blob_count,
+            cell_mask=cell_mask,
+            received_at=0.0,
+        )
+
+    def _add_recording_peers(
+        self,
+        node: Node,
+        simulator: Simulator,
+        network: Network,
+        count: int,
+        protocol: EthProtocol = EthProtocol.ETH71,
+        prefix: str = "peer",
+    ) -> dict[ActorId, AnnouncementRecorder]:
+        recorders: dict[ActorId, AnnouncementRecorder] = {}
+        for i in range(count):
+            peer = ActorId(f"{prefix}-{i}")
+            actor = AnnouncementRecorder(peer, simulator)
+            simulator.register_actor(actor)
+            network.register_node(peer, "united states")
+            node.add_peer(peer, protocol)
+            recorders[peer] = actor
+        return recorders
+
+    def _announcement_count(
+        self, recorders: dict[ActorId, AnnouncementRecorder]
+    ) -> int:
+        return sum(
+            1
+            for actor in recorders.values()
+            if any(isinstance(m, NewPooledTransactionHashes) for m in actor.received)
+        )
+
     def test_completed_tx_announced_to_peers(
         self,
         simulator: Simulator,
@@ -1074,7 +1134,7 @@ class TestAnnouncement:
         simulator.register_actor(node)
         network.register_node(node.id, "united states")
 
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
 
         class AnnouncementRecorder(Actor):
             def __init__(self, actor_id: ActorId, sim: Simulator) -> None:
@@ -1121,6 +1181,103 @@ class TestAnnouncement:
             assert len(announcements) == 1
             assert tx_hash in announcements[0].hashes
 
+    def test_fewer_than_limit_announced_to_all_eligible_peers(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
+    ) -> None:
+        """Nodes with fewer than 16 eligible peers announce to every eligible peer."""
+        node = Node(ActorId("test-node"), simulator, config, custody_columns=8, metrics=metrics)
+        simulator.register_actor(node)
+        network.register_node(node.id, "united states")
+        recorders = self._add_recording_peers(node, simulator, network, count=3)
+
+        entry = self._make_entry()
+        node.pool.add(entry)
+        node._announce_tx(entry)
+        simulator.run(until=1.0)
+
+        assert self._announcement_count(recorders) == 3
+        assert len(entry.announced_to) == 3
+
+    def test_completed_tx_announcement_limited_to_16_peers(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
+    ) -> None:
+        """Completed transactions are announced to at most 16 eligible peers."""
+        node = Node(ActorId("test-node"), simulator, config, custody_columns=8, metrics=metrics)
+        simulator.register_actor(node)
+        network.register_node(node.id, "united states")
+        recorders = self._add_recording_peers(node, simulator, network, count=20)
+
+        entry = self._make_entry()
+        node.pool.add(entry)
+        node._announce_tx(entry)
+        simulator.run(until=1.0)
+
+        assert self._announcement_count(recorders) == 16
+        assert len(entry.announced_to) == 16
+
+    def test_repeated_announcement_does_not_leak_to_additional_peers(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
+    ) -> None:
+        """Repeated announcement attempts keep the same capped peer set."""
+        node = Node(ActorId("test-node"), simulator, config, custody_columns=8, metrics=metrics)
+        simulator.register_actor(node)
+        network.register_node(node.id, "united states")
+        recorders = self._add_recording_peers(node, simulator, network, count=20)
+
+        entry = self._make_entry()
+        node.pool.add(entry)
+        node._announce_tx(entry)
+        simulator.run(until=1.0)
+        first_announced_to = set(entry.announced_to)
+
+        node._announce_tx(entry)
+        simulator.run(until=2.0)
+
+        assert self._announcement_count(recorders) == 16
+        assert entry.announced_to == first_announced_to
+
+    def test_partial_tx_announcement_skips_legacy_peers_before_limit(
+        self,
+        simulator: Simulator,
+        network: Network,
+        config: SimulationConfig,
+        metrics: MetricsCollector,
+    ) -> None:
+        """Partial availability is advertised only to capped eth/71 peers."""
+        node = Node(ActorId("test-node"), simulator, config, custody_columns=8, metrics=metrics)
+        simulator.register_actor(node)
+        network.register_node(node.id, "united states")
+        sparse_recorders = self._add_recording_peers(
+            node, simulator, network, count=20, protocol=EthProtocol.ETH71, prefix="sparse"
+        )
+        legacy_recorders = self._add_recording_peers(
+            node, simulator, network, count=5, protocol=EthProtocol.ETH70, prefix="legacy"
+        )
+
+        entry = self._make_entry(
+            tx_hash=TxHash("0x" + "ef" * 32),
+            cell_mask=node.custody_mask,
+        )
+        node.pool.add(entry)
+        node._announce_tx(entry)
+        simulator.run(until=1.0)
+
+        assert self._announcement_count(sparse_recorders) == 16
+        assert self._announcement_count(legacy_recorders) == 0
+        assert len(entry.announced_to) == 16
+
     def test_announcements_use_negotiated_protocol(
         self,
         simulator: Simulator,
@@ -1133,7 +1290,7 @@ class TestAnnouncement:
         simulator.register_actor(node)
         network.register_node(node.id, "united states")
 
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
         from sparse_blobpool.core.types import Address
         from sparse_blobpool.pool.blobpool import BlobTxEntry
 
@@ -1197,7 +1354,7 @@ class TestAnnouncement:
         simulator.register_actor(node)
         network.register_node(node.id, "united states")
 
-        from sparse_blobpool.core.actor import Actor, EventPayload
+        from sparse_blobpool.core.actor import Actor
         from sparse_blobpool.core.types import Address
         from sparse_blobpool.pool.blobpool import BlobTxEntry
 

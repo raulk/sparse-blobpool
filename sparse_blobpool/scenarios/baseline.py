@@ -35,9 +35,9 @@ def main() -> None:
     import json
     import time
 
-    print("Building simulation with 2000 nodes...")
+    print("Building simulation with 10000 nodes...")
     config = SimulationConfig(
-        node_count=2000,
+        node_count=10000,
         mesh_degree=50,
         duration=60.0,
     )

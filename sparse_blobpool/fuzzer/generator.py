@@ -83,6 +83,7 @@ def config_to_dict(config: SimulationConfig) -> dict[str, object]:
         "node_count": config.node_count,
         "interconnection_policy": policy_name,
         "mesh_degree": config.mesh_degree,
+        "outbound_broadcast_peer_limit": config.outbound_broadcast_peer_limit,
         "provider_probability": config.provider_probability,
         "legacy_protocol_probability": config.legacy_protocol_probability,
         "min_providers_before_sample": config.min_providers_before_sample,

@@ -24,6 +24,7 @@ class SimulationConfig:
     node_count: int = 2000
     interconnection_policy: InterconnectionPolicy = None  # type: ignore[assignment]
     mesh_degree: int = 50  # D - number of peers per node
+    outbound_broadcast_peer_limit: int | None = 50
 
     # Protocol parameters (EIP-8070)
     provider_probability: float = 0.15  # p
@@ -57,6 +58,11 @@ class SimulationConfig:
     def __post_init__(self) -> None:
         if not 0.0 <= self.legacy_protocol_probability <= 1.0:
             raise ValueError("legacy_protocol_probability must be in [0, 1]")
+
+        if self.outbound_broadcast_peer_limit is not None and (
+            self.outbound_broadcast_peer_limit <= 0
+        ):
+            raise ValueError("outbound_broadcast_peer_limit must be positive or None")
 
         if self.interconnection_policy is None:
             from sparse_blobpool.core.topology import GEOGRAPHIC

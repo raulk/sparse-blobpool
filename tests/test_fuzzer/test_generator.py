@@ -76,8 +76,10 @@ def test_config_to_dict_contains_required_fields() -> None:
     d = config_to_dict(config)
     assert "node_count" in d
     assert "mesh_degree" in d
+    assert "outbound_broadcast_peer_limit" in d
     assert "legacy_protocol_probability" in d
     assert "seed" in d
     assert "duration" in d
     assert d["node_count"] == 100
     assert d["mesh_degree"] == 50
+    assert d["outbound_broadcast_peer_limit"] == 16
