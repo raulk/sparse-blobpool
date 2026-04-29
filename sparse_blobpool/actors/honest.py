@@ -1,4 +1,4 @@
-"""Node actor implementing eth/71 sparse blobpool protocol."""
+"""Node actor implementing eth/72 sparse blobpool protocol."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ class PendingRequest:
 
 
 class Node(Actor):
-    """Node actor implementing the eth/71 sparse blobpool protocol.
+    """Node actor implementing the eth/72 sparse blobpool protocol.
 
     Each node maintains a local blobpool and processes incoming announcements
     by probabilistically deciding to act as a provider (fetch full blob) or
@@ -113,7 +113,7 @@ class Node(Actor):
 
         # Peer connections
         self._peers: set[ActorId] = set()
-        self._protocols = protocols or {EthProtocol.ETH70, EthProtocol.ETH71}
+        self._protocols = protocols or {EthProtocol.ETH70, EthProtocol.ETH72}
         self._peer_protocols: dict[ActorId, EthProtocol] = {}
 
         # Transaction processing state
@@ -161,8 +161,8 @@ class Node(Actor):
         return protocol in self._protocols
 
     def _default_peer_protocol(self) -> EthProtocol:
-        if EthProtocol.ETH71 in self._protocols:
-            return EthProtocol.ETH71
+        if EthProtocol.ETH72 in self._protocols:
+            return EthProtocol.ETH72
         return EthProtocol.ETH70
 
     def on_event(self, payload: EventPayload) -> None:
@@ -568,7 +568,7 @@ class Node(Actor):
     def _handle_get_cells(self, msg: GetCells) -> None:
         from sparse_blobpool.protocol.messages import Cell, Cells
 
-        if EthProtocol.ETH71 not in self._protocols:
+        if EthProtocol.ETH72 not in self._protocols:
             return
 
         cells_response: list[list[Cell | None]] = []
@@ -608,7 +608,7 @@ class Node(Actor):
         self.send(response, msg.sender)
 
     def _handle_cells(self, msg: Cells) -> None:
-        if EthProtocol.ETH71 not in self._protocols:
+        if EthProtocol.ETH72 not in self._protocols:
             return
 
         for tx_hash in msg.tx_hashes:

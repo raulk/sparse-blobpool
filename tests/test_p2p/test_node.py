@@ -446,14 +446,14 @@ class TestSamplerFlow:
         eth71_recorder = RequestRecorder(eth71_peer, simulator)
         simulator.register_actor(eth71_recorder)
         network.register_node(eth71_peer, "united states")
-        node.add_peer(eth71_peer, EthProtocol.ETH71)
+        node.add_peer(eth71_peer, EthProtocol.ETH72)
 
         for _ in range(config.min_providers_before_sample):
             provider = ActorId(f"eth71-{_}")
             p_recorder = RequestRecorder(provider, simulator)
             simulator.register_actor(p_recorder)
             network.register_node(provider, "united states")
-            node.add_peer(provider, EthProtocol.ETH71)
+            node.add_peer(provider, EthProtocol.ETH72)
             node.on_event(
                 NewPooledTransactionHashes(
                     sender=provider,
@@ -506,7 +506,7 @@ class TestSamplerFlow:
 
         # Step 2: one eth/71 provider peer announces — combined count reaches threshold
         eth71_peer = ActorId("eth71-provider")
-        node.add_peer(eth71_peer, EthProtocol.ETH71)
+        node.add_peer(eth71_peer, EthProtocol.ETH72)
         node.on_event(
             NewPooledTransactionHashes(
                 sender=eth71_peer,
@@ -1065,10 +1065,10 @@ class TestPeerManagement:
         sparse_peer = ActorId("sparse-peer")
         legacy_peer = ActorId("legacy-peer")
 
-        node.add_peer(sparse_peer, EthProtocol.ETH71)
+        node.add_peer(sparse_peer, EthProtocol.ETH72)
         node.add_peer(legacy_peer, EthProtocol.ETH70)
 
-        assert node.negotiated_protocol(sparse_peer) == EthProtocol.ETH71
+        assert node.negotiated_protocol(sparse_peer) == EthProtocol.ETH72
         assert node.negotiated_protocol(legacy_peer) == EthProtocol.ETH70
 
 
@@ -1100,7 +1100,7 @@ class TestAnnouncement:
         simulator: Simulator,
         network: Network,
         count: int,
-        protocol: EthProtocol = EthProtocol.ETH71,
+        protocol: EthProtocol = EthProtocol.ETH72,
         prefix: str = "peer",
     ) -> dict[ActorId, AnnouncementRecorder]:
         recorders: dict[ActorId, AnnouncementRecorder] = {}
@@ -1258,7 +1258,7 @@ class TestAnnouncement:
         simulator.register_actor(node)
         network.register_node(node.id, "united states")
         sparse_recorders = self._add_recording_peers(
-            node, simulator, network, count=20, protocol=EthProtocol.ETH71, prefix="sparse"
+            node, simulator, network, count=20, protocol=EthProtocol.ETH72, prefix="sparse"
         )
         legacy_recorders = self._add_recording_peers(
             node, simulator, network, count=5, protocol=EthProtocol.ETH70, prefix="legacy"
@@ -1308,7 +1308,7 @@ class TestAnnouncement:
         simulator.register_actor(legacy_actor)
         network.register_node(sparse_peer, "united states")
         network.register_node(legacy_peer, "united states")
-        node.add_peer(sparse_peer, EthProtocol.ETH71)
+        node.add_peer(sparse_peer, EthProtocol.ETH72)
         node.add_peer(legacy_peer, EthProtocol.ETH70)
 
         tx_hash = TxHash("0x" + "cd" * 32)
@@ -1372,7 +1372,7 @@ class TestAnnouncement:
         simulator.register_actor(legacy_actor)
         network.register_node(sparse_peer, "united states")
         network.register_node(legacy_peer, "united states")
-        node.add_peer(sparse_peer, EthProtocol.ETH71)
+        node.add_peer(sparse_peer, EthProtocol.ETH72)
         node.add_peer(legacy_peer, EthProtocol.ETH70)
 
         tx_hash = TxHash("0x" + "ef" * 32)

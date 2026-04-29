@@ -1,4 +1,4 @@
-"""eth/70 and eth/71 protocol message types for sparse blobpool."""
+"""eth/70 and eth/72 protocol message types for sparse blobpool."""
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -15,7 +15,7 @@ class EthProtocol(Enum):
     """Negotiated transaction propagation protocol for a peer edge."""
 
     ETH70 = auto()
-    ETH71 = auto()
+    ETH72 = auto()
 
 
 def full_blob_tx_size(tx_size: int, blob_count: int) -> int:

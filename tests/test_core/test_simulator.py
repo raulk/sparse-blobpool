@@ -267,8 +267,8 @@ class TestSimulator:
         sim = Simulator.build(config)
 
         for node in sim.nodes:
-            assert node.protocols == {EthProtocol.ETH70, EthProtocol.ETH71}
-            assert all(node.negotiated_protocol(peer) == EthProtocol.ETH71 for peer in node.peers)
+            assert node.protocols == {EthProtocol.ETH70, EthProtocol.ETH72}
+            assert all(node.negotiated_protocol(peer) == EthProtocol.ETH72 for peer in node.peers)
 
     def test_build_assigns_legacy_protocol_probability(self) -> None:
         """legacy_protocol_probability=1.0 makes every node eth/70-only."""
