@@ -124,7 +124,13 @@ class Network:
 
         # Record to metrics collector
         is_control = self._is_control_message(msg)
-        self._metrics.record_bandwidth(from_, to, msg.size_bytes, is_control)
+        self._metrics.record_bandwidth(
+            from_,
+            to,
+            msg.size_bytes,
+            is_control,
+            message_type=type(msg).__name__,
+        )
 
     def _is_control_message(self, msg: Message) -> bool:
         from sparse_blobpool.protocol.messages import Cells, GetCells, PooledTransactions

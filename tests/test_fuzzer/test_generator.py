@@ -35,6 +35,11 @@ def test_generate_simulation_config_within_ranges() -> None:
         <= config.provider_probability
         <= ranges.provider_probability[1]
     )
+    assert (
+        ranges.legacy_protocol_probability[0]
+        <= config.legacy_protocol_probability
+        <= ranges.legacy_protocol_probability[1]
+    )
     assert config.duration == 60.0
 
 
@@ -71,7 +76,10 @@ def test_config_to_dict_contains_required_fields() -> None:
     d = config_to_dict(config)
     assert "node_count" in d
     assert "mesh_degree" in d
+    assert "outbound_broadcast_peer_limit" in d
+    assert "legacy_protocol_probability" in d
     assert "seed" in d
     assert "duration" in d
     assert d["node_count"] == 100
     assert d["mesh_degree"] == 50
+    assert d["outbound_broadcast_peer_limit"] == 16

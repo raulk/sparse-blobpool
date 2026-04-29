@@ -2,8 +2,25 @@
 
 from __future__ import annotations
 
+from math import ceil
+from typing import TYPE_CHECKING
+
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.simulator import Simulator
+
+if TYPE_CHECKING:
+    from sparse_blobpool.metrics.collector import TxMetrics
+
+
+def propagation_time_to_percentile(
+    tx_metrics: TxMetrics, node_count: int, percentile: float
+) -> float | None:
+    """Return seconds from first seen until the tx reached percentile of nodes."""
+    threshold = max(1, ceil(node_count * percentile))
+    if len(tx_metrics.node_seen_times) < threshold:
+        return None
+    seen_times = sorted(tx_metrics.node_seen_times.values())
+    return seen_times[threshold - 1] - tx_metrics.first_seen_time
 
 
 def run_baseline_scenario(
@@ -73,17 +90,34 @@ def main() -> None:
     print(f"Events processed: {sim.events_processed}")
     print(f"Messages delivered: {sim.network.messages_delivered}")
     print(f"Total bytes transmitted: {sim.network.total_bytes / 1024 / 1024:.1f} MB")
-    print(f"Blocks produced: {sim.block_producer.blocks_produced}")
+    print(f"Total Blocks Produced: {sim.block_producer.total_blocks_produced}")
+    print(f"Non-empty Blocks Produced: {sim.block_producer.blocks_produced}")
     print(f"Blobs included: {sim.block_producer.total_blobs_included}")
 
+    metrics_results = sim.finalize_metrics()
+
     print("\n=== Transaction Propagation ===")
-    for tx_hash in tx_hashes[:3]:
-        nodes_with_tx = sum(1 for node in sim.nodes if node.pool.contains(tx_hash))
-        pct = 100 * nodes_with_tx / len(sim.nodes)
-        print(f"{tx_hash[:16]}...: {nodes_with_tx}/{len(sim.nodes)} nodes ({pct:.1f}%)")
+    for tx_hash in tx_hashes:
+        tx_metrics = sim.metrics.tx_metrics.get(tx_hash)
+        nodes_seen = len(tx_metrics.nodes_seen) if tx_metrics is not None else 0
+        pct = 100 * nodes_seen / len(sim.nodes)
+        propagation_times = (
+            {
+                label: propagation_time_to_percentile(tx_metrics, len(sim.nodes), percentile)
+                for label, percentile in (("p50", 0.50), ("p95", 0.95), ("p99", 0.99))
+            }
+            if tx_metrics is not None
+            else {"p50": None, "p95": None, "p99": None}
+        )
+        timing_summary = ", ".join(
+            f"{label}={time:.3f}s" if time is not None else f"{label}=n/a"
+            for label, time in propagation_times.items()
+        )
+        print(
+            f"{tx_hash[:16]}...: {nodes_seen}/{len(sim.nodes)} nodes ({pct:.1f}%), {timing_summary}"
+        )
 
     print("\n=== Metrics Analysis ===")
-    metrics_results = sim.finalize_metrics()
     print(f"Total bandwidth: {metrics_results.total_bandwidth_bytes / 1024 / 1024:.1f} MB")
     print(f"Bandwidth per blob: {metrics_results.bandwidth_per_blob / 1024:.1f} KB")
     print(f"Bandwidth reduction vs full: {metrics_results.bandwidth_reduction_vs_full:.2f}x")
@@ -92,6 +126,17 @@ def main() -> None:
     print(f"Propagation success rate: {metrics_results.propagation_success_rate * 100:.1f}%")
     print(f"Observed provider ratio: {metrics_results.observed_provider_ratio:.3f}")
     print(f"Reconstruction success rate: {metrics_results.reconstruction_success_rate * 100:.1f}%")
+
+    print("\n=== Bandwidth By Message Type ===")
+    total_bytes = metrics_results.total_bandwidth_bytes
+    for message_type, bytes_sent in sorted(
+        metrics_results.bytes_by_message_type.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    ):
+        count = metrics_results.message_count_by_type.get(message_type, 0)
+        pct = 100 * bytes_sent / total_bytes if total_bytes > 0 else 0.0
+        print(f"{message_type}: {bytes_sent / 1024 / 1024:.1f} MB ({pct:.1f}%, {count} messages)")
 
     print("\n=== Exporting to JSON ===")
     json_output = json.dumps(metrics_results.to_dict(), indent=2)

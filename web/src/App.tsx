@@ -741,7 +741,7 @@ function MetricsDisplay({ metrics }: { metrics?: Record<string, unknown> }) {
     )
   }
 
-  const bandwidthMetrics = ['total_bandwidth_bytes', 'bandwidth_per_blob', 'bandwidth_reduction_vs_full']
+  const bandwidthMetrics = ['total_bandwidth_bytes', 'bandwidth_per_blob', 'bandwidth_per_node', 'bandwidth_reduction_vs_full']
   const propagationMetrics = ['median_propagation_time', 'p99_propagation_time', 'propagation_success_rate']
   const providerMetrics = ['observed_provider_ratio', 'provider_coverage', 'expected_provider_coverage']
   const availabilityMetrics = ['reconstruction_success_rate', 'false_availability_rate', 'local_availability_met']

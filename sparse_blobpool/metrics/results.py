@@ -34,12 +34,14 @@ class SimulationResults:
     # Bandwidth efficiency
     total_bandwidth_bytes: int
     bandwidth_per_blob: float
+    bandwidth_per_node: float
     bandwidth_reduction_vs_full: float  # Ratio vs naive full propagation
 
     # Propagation performance
     median_propagation_time: float
+    p95_propagation_time: float
     p99_propagation_time: float
-    propagation_success_rate: float  # Fraction reaching 99% of network
+    propagation_success_rate: float  # Fraction reaching 95% of network
 
     # Protocol reliability
     observed_provider_ratio: float  # Actual provider fraction (~0.15 target)
@@ -54,6 +56,13 @@ class SimulationResults:
     # DA check metrics (per block)
     da_checks_passed_rate: float  # Fraction of nodes passing DA checks across all blocks
 
+    # eth/70 compatibility metrics
+    legacy_full_fetch_ratio: float = 0.0  # Full data fetches served through eth/70
+    full_data_coverage: float = 0.0  # Fraction of observed node/tx pairs with full data
+
+    # Sampling quality metric
+    sampling_success_rate: float = 0.0  # % of sampler nodes that used eth/71 (vs eth/70 fallback)
+
     # Attack outcomes (populated when adversaries present)
     spam_amplification_factor: float = 0.0
     victim_blobpool_pollution: float = 0.0
@@ -67,6 +76,10 @@ class SimulationResults:
     bytes_sent_per_node: dict[ActorId, int] = field(default_factory=dict)
     bytes_received_per_node: dict[ActorId, int] = field(default_factory=dict)
 
+    # Per-message bandwidth breakdown
+    bytes_by_message_type: dict[str, int] = field(default_factory=dict)
+    message_count_by_type: dict[str, int] = field(default_factory=dict)
+
     # Column coverage: number of nodes custodying each column (128 values)
     column_coverage: list[int] = field(default_factory=list)
 
@@ -74,8 +87,10 @@ class SimulationResults:
         return {
             "total_bandwidth_bytes": self.total_bandwidth_bytes,
             "bandwidth_per_blob": self.bandwidth_per_blob,
+            "bandwidth_per_node": self.bandwidth_per_node,
             "bandwidth_reduction_vs_full": self.bandwidth_reduction_vs_full,
             "median_propagation_time": self.median_propagation_time,
+            "p95_propagation_time": self.p95_propagation_time,
             "p99_propagation_time": self.p99_propagation_time,
             "propagation_success_rate": self.propagation_success_rate,
             "observed_provider_ratio": self.observed_provider_ratio,
@@ -83,10 +98,15 @@ class SimulationResults:
             "false_availability_rate": self.false_availability_rate,
             "provider_coverage": self.provider_coverage,
             "expected_provider_coverage": self.expected_provider_coverage,
+            "legacy_full_fetch_ratio": self.legacy_full_fetch_ratio,
+            "full_data_coverage": self.full_data_coverage,
             "local_availability_met": self.local_availability_met,
             "da_checks_passed_rate": self.da_checks_passed_rate,
             "spam_amplification_factor": self.spam_amplification_factor,
             "victim_blobpool_pollution": self.victim_blobpool_pollution,
             "withholding_detection_rate": self.withholding_detection_rate,
+            "sampling_success_rate": self.sampling_success_rate,
+            "bytes_by_message_type": self.bytes_by_message_type,
+            "message_count_by_type": self.message_count_by_type,
             "column_coverage": self.column_coverage,
         }

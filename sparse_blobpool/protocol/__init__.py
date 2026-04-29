@@ -13,11 +13,13 @@ from sparse_blobpool.protocol.messages import (
     BlockBroadcast,
     Cell,
     Cells,
+    EthProtocol,
     GetCells,
     GetPooledTransactions,
     NewPooledTransactionHashes,
     PooledTransactions,
     TxBody,
+    full_blob_tx_size,
 )
 
 __all__ = [
@@ -31,9 +33,11 @@ __all__ = [
     "BlockBroadcast",
     "Cell",
     "Cells",
+    "EthProtocol",
     "GetCells",
     "GetPooledTransactions",
     "NewPooledTransactionHashes",
     "PooledTransactions",
     "TxBody",
+    "full_blob_tx_size",
 ]

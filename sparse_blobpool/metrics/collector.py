@@ -35,7 +35,11 @@ class TxMetrics:
     propagation_complete_time: float | None = None  # When 99% of nodes saw it
     provider_count: int = 0
     sampler_count: int = 0
+    legacy_provider_count: int = 0
+    sampler_eth71_count: int = 0  # Samplers that fetched via eth/71
+    sampler_fallback_count: int = 0  # Samplers that fell back to eth/70
     nodes_seen: set[ActorId] = field(default_factory=set)
+    node_seen_times: dict[ActorId, float] = field(default_factory=dict)
     cell_masks: dict[ActorId, int] = field(default_factory=dict)  # Node -> cell_mask
     included_at_slot: int | None = None
 
@@ -58,6 +62,8 @@ class MetricsCollector:
     bytes_received: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
     bytes_sent_control: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
     bytes_sent_data: dict[ActorId, int] = field(default_factory=lambda: defaultdict(int))
+    bytes_by_message_type: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    message_count_by_type: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     # Country tracking
     node_countries: dict[ActorId, Country] = field(default_factory=dict)
@@ -86,6 +92,10 @@ class MetricsCollector:
         default_factory=lambda: defaultdict(lambda: defaultdict(list))
     )  # victim -> attack_type -> tx_hashes
 
+    # Sampler outcome tracking (eth/71 success vs eth/70 fallback)
+    sampler_eth71_success: int = 0
+    sampler_legacy_fallback: int = 0
+
     # DA check tracking (per block per node)
     da_checks_passed: int = 0
     da_checks_total: int = 0
@@ -112,10 +122,15 @@ class MetricsCollector:
         to: ActorId,
         size: int,
         is_control: bool = False,
+        message_type: str | None = None,
     ) -> None:
         self.bytes_sent[from_] += size
         self.bytes_received[to] += size
         self._total_bytes += size
+
+        if message_type is not None:
+            self.bytes_by_message_type[message_type] += size
+            self.message_count_by_type[message_type] += 1
 
         if is_control:
             self.bytes_sent_control[from_] += size
@@ -140,19 +155,24 @@ class MetricsCollector:
             )
 
         metrics = self.tx_metrics[tx_hash]
+        if node_id not in metrics.nodes_seen:
+            metrics.node_seen_times[node_id] = current_time
         metrics.nodes_seen.add(node_id)
         metrics.cell_masks[node_id] = cell_mask
 
-        # Track role distribution
-        if cell_mask == ALL_ONES:
+        # Track role distribution. Sparse provider metrics intentionally exclude
+        # eth/70 full fetches so provider coverage remains an eth/71 signal.
+        if role.name == "LEGACY_PROVIDER":
+            metrics.legacy_provider_count += 1
+        elif role.name == "PROVIDER":
             metrics.provider_count += 1
         else:
             metrics.sampler_count += 1
 
-        # Check if propagation is complete (99% of nodes)
+        # Check if propagation is complete (95% of nodes)
         if (
             metrics.propagation_complete_time is None
-            and len(metrics.nodes_seen) >= self.node_count * 0.99
+            and len(metrics.nodes_seen) >= self.node_count * 0.95
         ):
             metrics.propagation_complete_time = current_time
 
@@ -186,6 +206,25 @@ class MetricsCollector:
         self.da_checks_total += 1
         if passed:
             self.da_checks_passed += 1
+
+    def record_sampler_outcome(self, tx_hash: TxHash, *, via_eth71: bool) -> None:
+        """Record whether a sampler node fetched via eth/71 or fell back to eth/70.
+
+        Args:
+            tx_hash: The transaction hash being tracked.
+            via_eth71: True if the sampler completed the fetch via eth/71 sparse cells;
+                       False if it fell back to a full eth/70 PooledTransactions fetch.
+        """
+        if tx_hash not in self.tx_metrics:
+            return  # tx_metrics entry should exist by this point, but be defensive
+
+        metrics = self.tx_metrics[tx_hash]
+        if via_eth71:
+            metrics.sampler_eth71_count += 1
+            self.sampler_eth71_success += 1
+        else:
+            metrics.sampler_fallback_count += 1
+            self.sampler_legacy_fallback += 1
 
     def snapshot(self) -> None:
         """Called periodically to build bandwidth/propagation timeseries."""
@@ -261,7 +300,9 @@ class MetricsCollector:
 
         # Compute derived metrics
         total_providers = sum(m.provider_count for m in self.tx_metrics.values())
-        total_roles = sum(m.provider_count + m.sampler_count for m in self.tx_metrics.values())
+        total_samplers = sum(m.sampler_count for m in self.tx_metrics.values())
+        total_legacy_providers = sum(m.legacy_provider_count for m in self.tx_metrics.values())
+        total_roles = total_providers + total_samplers
 
         # Bandwidth per blob (average)
         bandwidth_per_blob = self._total_bytes / total_txs if total_txs > 0 else 0.0
@@ -274,12 +315,32 @@ class MetricsCollector:
         # Provider coverage: average fraction of nodes that became providers per tx
         # (among nodes that saw each tx)
         provider_coverages = []
+        full_data_coverages = []
         for metrics in self.tx_metrics.values():
+            sparse_roles = metrics.provider_count + metrics.sampler_count
+            if sparse_roles > 0:
+                provider_coverages.append(metrics.provider_count / sparse_roles)
+
             nodes_seen = len(metrics.nodes_seen)
             if nodes_seen > 0:
-                provider_coverages.append(metrics.provider_count / nodes_seen)
+                full_data_coverages.append(
+                    (metrics.provider_count + metrics.legacy_provider_count) / nodes_seen
+                )
         provider_coverage = (
             sum(provider_coverages) / len(provider_coverages) if provider_coverages else 0.0
+        )
+        full_data_coverage = (
+            sum(full_data_coverages) / len(full_data_coverages) if full_data_coverages else 0.0
+        )
+        full_fetches = total_providers + total_legacy_providers
+        legacy_full_fetch_ratio = total_legacy_providers / full_fetches if full_fetches > 0 else 0.0
+
+        # Sampling success rate: fraction of original-sampler completions that used eth/71
+        total_sampler_outcomes = self.sampler_eth71_success + self.sampler_legacy_fallback
+        sampling_success_rate = (
+            self.sampler_eth71_success / total_sampler_outcomes
+            if total_sampler_outcomes > 0
+            else 0.0
         )
 
         # Local availability met: fraction of nodes meeting local availability
@@ -325,9 +386,17 @@ class MetricsCollector:
             # Bandwidth
             total_bandwidth_bytes=self._total_bytes,
             bandwidth_per_blob=bandwidth_per_blob,
+            bandwidth_per_node=(
+                self._total_bytes / self.node_count if self.node_count > 0 else 0.0
+            ),
             bandwidth_reduction_vs_full=bandwidth_reduction,
             # Propagation
             median_propagation_time=median(propagation_times) if propagation_times else 0.0,
+            p95_propagation_time=(
+                sorted(propagation_times)[int(len(propagation_times) * 0.95)]
+                if propagation_times
+                else 0.0
+            ),
             p99_propagation_time=(
                 sorted(propagation_times)[int(len(propagation_times) * 0.99)]
                 if propagation_times
@@ -343,6 +412,9 @@ class MetricsCollector:
             # Sparse protocol metrics
             provider_coverage=provider_coverage,
             expected_provider_coverage=self.expected_provider_probability,
+            legacy_full_fetch_ratio=legacy_full_fetch_ratio,
+            full_data_coverage=full_data_coverage,
+            sampling_success_rate=sampling_success_rate,
             local_availability_met=local_availability_met,
             da_checks_passed_rate=da_checks_passed_rate,
             # Attack outcomes
@@ -360,5 +432,7 @@ class MetricsCollector:
             propagation_timeseries=self.propagation_timeseries,
             bytes_sent_per_node=dict(self.bytes_sent),
             bytes_received_per_node=dict(self.bytes_received),
+            bytes_by_message_type=dict(self.bytes_by_message_type),
+            message_count_by_type=dict(self.message_count_by_type),
             column_coverage=self.column_coverage,
         )

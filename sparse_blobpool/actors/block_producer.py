@@ -27,6 +27,13 @@ class BlockProducer(Actor):
         self._config = config or SimulationConfig()
         self._current_slot = 0
 
+        # Diagnostic counters kept here for tooling and scenarios that print them.
+        # total_blocks_produced counts every slot that selects a proposer.
+        # blocks_produced only counts non-empty blocks actually emitted by proposers.
+        self.total_blocks_produced: int = 0
+        self.blocks_produced: int = 0
+        self.total_blobs_included: int = 0
+
     @property
     def current_slot(self) -> int:
         return self._current_slot
@@ -46,6 +53,7 @@ class BlockProducer(Actor):
             return
 
         proposer = self._select_proposer(nodes)
+        self.total_blocks_produced += 1
         self._simulator.deliver_command(ProduceBlock(slot=self._current_slot), proposer.id)
 
         self._advance_slot()

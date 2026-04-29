@@ -4,9 +4,11 @@ from dataclasses import dataclass
 
 import pytest
 
+from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.actor import Actor, Command, EventPayload
 from sparse_blobpool.core.simulator import Event, Simulator
 from sparse_blobpool.core.types import ActorId
+from sparse_blobpool.protocol.messages import EthProtocol
 
 
 @dataclass
@@ -258,6 +260,29 @@ class TestSimulator:
 
         with pytest.raises(RuntimeError, match="unknown actor"):
             sim.run(until=2.0)
+
+    def test_build_defaults_to_eth71_capable_nodes(self) -> None:
+        """Default simulator build makes all nodes eth/71 capable with eth/70 fallback."""
+        config = SimulationConfig(node_count=8, mesh_degree=3, seed=1)
+        sim = Simulator.build(config)
+
+        for node in sim.nodes:
+            assert node.protocols == {EthProtocol.ETH70, EthProtocol.ETH72}
+            assert all(node.negotiated_protocol(peer) == EthProtocol.ETH72 for peer in node.peers)
+
+    def test_build_assigns_legacy_protocol_probability(self) -> None:
+        """legacy_protocol_probability=1.0 makes every node eth/70-only."""
+        config = SimulationConfig(
+            node_count=8,
+            mesh_degree=3,
+            seed=1,
+            legacy_protocol_probability=1.0,
+        )
+        sim = Simulator.build(config)
+
+        for node in sim.nodes:
+            assert node.protocols == {EthProtocol.ETH70}
+            assert all(node.negotiated_protocol(peer) == EthProtocol.ETH70 for peer in node.peers)
 
     def test_actors_by_type(self) -> None:
         """actors_by_type filters actors by their class."""

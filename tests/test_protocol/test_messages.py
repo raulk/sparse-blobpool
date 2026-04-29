@@ -1,7 +1,7 @@
 """Tests for eth/71 protocol messages."""
 
 from sparse_blobpool.core.types import ActorId, TxHash
-from sparse_blobpool.protocol.constants import ALL_ONES, CELL_SIZE, MESSAGE_OVERHEAD
+from sparse_blobpool.protocol.constants import ALL_ONES, CELL_SIZE, CELLS_PER_BLOB, MESSAGE_OVERHEAD
 from sparse_blobpool.protocol.messages import (
     Block,
     BlockBroadcast,
@@ -12,6 +12,7 @@ from sparse_blobpool.protocol.messages import (
     NewPooledTransactionHashes,
     PooledTransactions,
     TxBody,
+    full_blob_tx_size,
 )
 
 
@@ -89,6 +90,24 @@ class TestPooledTransactions:
             transactions=[None, None],
         )
         assert msg.size_bytes == MESSAGE_OVERHEAD
+
+    def test_size_bytes_multi_tx_eth70_full_blob_payloads(self) -> None:
+        """eth/70 PooledTransactions carries full blob payload bytes per tx."""
+        tx1 = TxBody(
+            tx_hash=TxHash("a" * 64),
+            tx_bytes=full_blob_tx_size(tx_size=500, blob_count=1),
+        )
+        tx2 = TxBody(
+            tx_hash=TxHash("b" * 64),
+            tx_bytes=full_blob_tx_size(tx_size=700, blob_count=3),
+        )
+        msg = PooledTransactions(
+            sender=ActorId("node1"),
+            transactions=[tx1, None, tx2],
+        )
+        expected = MESSAGE_OVERHEAD + 500 + CELLS_PER_BLOB * CELL_SIZE
+        expected += 700 + 3 * CELLS_PER_BLOB * CELL_SIZE
+        assert msg.size_bytes == expected
 
 
 class TestGetCells:

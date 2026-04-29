@@ -14,7 +14,7 @@ MAX_BLOBS_PER_TX = 6
 # Cell mask constants
 ALL_ONES = (1 << CELLS_PER_BLOB) - 1  # uint128 with all bits set (full availability)
 
-# Message IDs (eth/71 protocol)
+# Message IDs (eth/72 protocol)
 MSG_NEW_POOLED_TX_HASHES = 0x08
 MSG_GET_POOLED_TRANSACTIONS = 0x09
 MSG_POOLED_TRANSACTIONS = 0x0A
