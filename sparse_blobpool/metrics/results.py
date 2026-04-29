@@ -41,7 +41,7 @@ class SimulationResults:
     median_propagation_time: float
     p95_propagation_time: float
     p99_propagation_time: float
-    propagation_success_rate: float  # Fraction reaching 99% of network
+    propagation_success_rate: float  # Fraction reaching 95% of network
 
     # Protocol reliability
     observed_provider_ratio: float  # Actual provider fraction (~0.15 target)

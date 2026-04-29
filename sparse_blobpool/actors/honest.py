@@ -755,20 +755,44 @@ class Node(Actor):
             return
 
         # Try another peer
-        if request.request_type == "tx":
-            # Find another peer to try
-            tried_peer = request.target_peer
-            other_peers = (pending.provider_peers | pending.sampler_peers) - {tried_peer}
-            new_peer = self._pick_peer(other_peers)
-            if new_peer is not None:
-                new_request_id = self._allocate_request_id()
+        tried_peer = request.target_peer
+        other_peers = (pending.provider_peers | pending.sampler_peers) - {tried_peer}
+        new_peer = self._pick_peer(other_peers)
+
+        if new_peer is not None:
+            new_request_id = self._allocate_request_id()
+            if request.request_type == "tx":
                 self._send_get_transactions(request.tx_hashes, new_peer, new_request_id)
             else:
-                # No more peers, give up
-                for tx_hash in request.tx_hashes:
-                    self._pending_txs.pop(tx_hash, None)
+                # Retry cell request with another peer
+                from sparse_blobpool.protocol.messages import GetCells
+
+                pending.pending_request_id = new_request_id
+                self._pending_requests[new_request_id] = PendingRequest(
+                    request_id=new_request_id,
+                    tx_hashes=request.tx_hashes,
+                    target_peer=new_peer,
+                    request_type="cells",
+                    sent_at=self._simulator.current_time,
+                )
+
+                # Determine appropriate mask for retry
+                if pending.role == Role.PROVIDER:
+                    mask = ALL_ONES
+                else:
+                    extra_columns = self._select_extra_columns(pending.provider_peers)
+                    mask = self._custody_mask | extra_columns
+
+                msg = GetCells(sender=self._id, tx_hashes=request.tx_hashes, cell_mask=mask)
+                self.send(msg, new_peer)
+                self._schedule_request_timeout(new_request_id)
+        elif pending.legacy_peers:
+            # No more eth/71 peers, fall back to legacy to avoid network partition
+            legacy_peer = self._pick_peer(pending.legacy_peers)
+            if legacy_peer is not None:
+                self._start_legacy_fetch(request.tx_hashes, legacy_peer)
         else:
-            # Cell request timeout - try another peer or give up
+            # No more peers at all, drop the tx
             for tx_hash in request.tx_hashes:
                 self._pending_txs.pop(tx_hash, None)
 

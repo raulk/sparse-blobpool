@@ -166,10 +166,10 @@ class MetricsCollector:
         else:
             metrics.sampler_count += 1
 
-        # Check if propagation is complete (99% of nodes)
+        # Check if propagation is complete (95% of nodes)
         if (
             metrics.propagation_complete_time is None
-            and len(metrics.nodes_seen) >= self.node_count * 0.99
+            and len(metrics.nodes_seen) >= self.node_count * 0.95
         ):
             metrics.propagation_complete_time = current_time
 
