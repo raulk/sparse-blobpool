@@ -1113,9 +1113,7 @@ class TestAnnouncement:
             recorders[peer] = actor
         return recorders
 
-    def _announcement_count(
-        self, recorders: dict[ActorId, AnnouncementRecorder]
-    ) -> int:
+    def _announcement_count(self, recorders: dict[ActorId, AnnouncementRecorder]) -> int:
         return sum(
             1
             for actor in recorders.values()

@@ -704,8 +704,7 @@ class Node(Actor):
         eligible = [
             peer
             for peer in self._peers
-            if entry.has_full_availability
-            or self.negotiated_protocol(peer) != EthProtocol.ETH70
+            if entry.has_full_availability or self.negotiated_protocol(peer) != EthProtocol.ETH70
         ]
         ordered = sorted(eligible, key=lambda peer: self._announcement_peer_key(entry, peer))
         limit = self._config.outbound_broadcast_peer_limit

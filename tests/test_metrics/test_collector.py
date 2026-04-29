@@ -5,6 +5,7 @@ from sparse_blobpool.core.simulator import Simulator
 from sparse_blobpool.core.types import ActorId, TxHash
 from sparse_blobpool.metrics.collector import MetricsCollector
 from sparse_blobpool.protocol.constants import ALL_ONES
+from sparse_blobpool.scenarios.baseline import propagation_time_to_percentile
 
 
 class TestMetricsCollector:
@@ -62,6 +63,7 @@ class TestMetricsCollector:
         assert tx_metrics.provider_count == 1
         assert tx_metrics.sampler_count == 0
         assert ActorId("node1") in tx_metrics.nodes_seen
+        assert tx_metrics.node_seen_times[ActorId("node1")] == 0.0
 
     def test_record_tx_seen_sampler(self) -> None:
         sim = Simulator()
@@ -95,14 +97,38 @@ class TestMetricsCollector:
 
         # Add 9 nodes (90%) - not complete
         for i in range(9):
+            sim._current_time = float(i)
             metrics.record_tx_seen(ActorId(f"node{i}"), tx_hash, Role.PROVIDER, ALL_ONES)
 
         tx_metrics = metrics.tx_metrics[tx_hash]
         assert tx_metrics.propagation_complete_time is None
+        assert tx_metrics.node_seen_times[ActorId("node8")] == 8.0
+
+        # Re-seeing the same node should not overwrite its first-seen timestamp
+        sim._current_time = 9.0
+        metrics.record_tx_seen(ActorId("node8"), tx_hash, Role.PROVIDER, ALL_ONES)
+        assert tx_metrics.node_seen_times[ActorId("node8")] == 8.0
+        assert tx_metrics.propagation_complete_time is None
 
         # Add 10th node (100%) - complete
+        sim._current_time = 10.0
         metrics.record_tx_seen(ActorId("node9"), tx_hash, Role.PROVIDER, ALL_ONES)
-        assert tx_metrics.propagation_complete_time is not None
+        assert tx_metrics.propagation_complete_time == 10.0
+
+    def test_propagation_time_to_percentile(self) -> None:
+        sim = Simulator()
+        metrics = MetricsCollector(simulator=sim, node_count=10)
+        tx_hash = TxHash("abc123")
+
+        for i in range(10):
+            sim._current_time = float(i)
+            metrics.record_tx_seen(ActorId(f"node{i}"), tx_hash, Role.PROVIDER, ALL_ONES)
+
+        tx_metrics = metrics.tx_metrics[tx_hash]
+        assert propagation_time_to_percentile(tx_metrics, 10, 0.50) == 4.0
+        assert propagation_time_to_percentile(tx_metrics, 10, 0.95) == 9.0
+        assert propagation_time_to_percentile(tx_metrics, 10, 0.99) == 9.0
+        assert propagation_time_to_percentile(tx_metrics, 11, 0.99) is None
 
     def test_record_inclusion(self) -> None:
         sim = Simulator()

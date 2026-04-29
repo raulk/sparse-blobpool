@@ -39,6 +39,7 @@ class TxMetrics:
     sampler_eth71_count: int = 0  # Samplers that fetched via eth/71
     sampler_fallback_count: int = 0  # Samplers that fell back to eth/70
     nodes_seen: set[ActorId] = field(default_factory=set)
+    node_seen_times: dict[ActorId, float] = field(default_factory=dict)
     cell_masks: dict[ActorId, int] = field(default_factory=dict)  # Node -> cell_mask
     included_at_slot: int | None = None
 
@@ -154,6 +155,8 @@ class MetricsCollector:
             )
 
         metrics = self.tx_metrics[tx_hash]
+        if node_id not in metrics.nodes_seen:
+            metrics.node_seen_times[node_id] = current_time
         metrics.nodes_seen.add(node_id)
         metrics.cell_masks[node_id] = cell_mask
 

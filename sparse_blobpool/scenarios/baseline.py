@@ -2,8 +2,25 @@
 
 from __future__ import annotations
 
+from math import ceil
+from typing import TYPE_CHECKING
+
 from sparse_blobpool.config import SimulationConfig
 from sparse_blobpool.core.simulator import Simulator
+
+if TYPE_CHECKING:
+    from sparse_blobpool.metrics.collector import TxMetrics
+
+
+def propagation_time_to_percentile(
+    tx_metrics: TxMetrics, node_count: int, percentile: float
+) -> float | None:
+    """Return seconds from first seen until the tx reached percentile of nodes."""
+    threshold = max(1, ceil(node_count * percentile))
+    if len(tx_metrics.node_seen_times) < threshold:
+        return None
+    seen_times = sorted(tx_metrics.node_seen_times.values())
+    return seen_times[threshold - 1] - tx_metrics.first_seen_time
 
 
 def run_baseline_scenario(
@@ -35,9 +52,9 @@ def main() -> None:
     import json
     import time
 
-    print("Building simulation with 10000 nodes...")
+    print("Building simulation with 2000 nodes...")
     config = SimulationConfig(
-        node_count=10000,
+        node_count=2000,
         mesh_degree=50,
         duration=60.0,
     )
@@ -84,7 +101,21 @@ def main() -> None:
         tx_metrics = sim.metrics.tx_metrics.get(tx_hash)
         nodes_seen = len(tx_metrics.nodes_seen) if tx_metrics is not None else 0
         pct = 100 * nodes_seen / len(sim.nodes)
-        print(f"{tx_hash[:16]}...: {nodes_seen}/{len(sim.nodes)} nodes ({pct:.1f}%)")
+        propagation_times = (
+            {
+                label: propagation_time_to_percentile(tx_metrics, len(sim.nodes), percentile)
+                for label, percentile in (("p50", 0.50), ("p95", 0.95), ("p99", 0.99))
+            }
+            if tx_metrics is not None
+            else {"p50": None, "p95": None, "p99": None}
+        )
+        timing_summary = ", ".join(
+            f"{label}={time:.3f}s" if time is not None else f"{label}=n/a"
+            for label, time in propagation_times.items()
+        )
+        print(
+            f"{tx_hash[:16]}...: {nodes_seen}/{len(sim.nodes)} nodes ({pct:.1f}%), {timing_summary}"
+        )
 
     print("\n=== Metrics Analysis ===")
     print(f"Total bandwidth: {metrics_results.total_bandwidth_bytes / 1024 / 1024:.1f} MB")
